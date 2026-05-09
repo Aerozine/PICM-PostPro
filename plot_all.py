@@ -15,6 +15,7 @@ from picm_postpro.plots import parse_formats
 
 REPORT_DIRS = (
     "report_comparisons",
+    "postpro_run",
     "study_energy",
     "study_vorticity",
     "study_ppc_impact",

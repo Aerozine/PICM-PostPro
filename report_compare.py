@@ -27,6 +27,7 @@ from picm_postpro.paths import (
     DATA_DIR,
     PICM_ROOT,
     SCRIPTS_DIR,
+    VIDEO_DIR,
     default_img_dir,
     default_misc_dir,
 )
@@ -79,6 +80,14 @@ REPORT_TESTS = {
 }
 
 REPORT_METHODS = ("pic", "flip", "apic")
+VIDEO_METHODS = ("pic", "flip", "apic", "mixed")
+METHOD_COLORS = {
+    "pic": "#1f77b4",
+    "flip": "#ff7f0e",
+    "apic": "#2ca02c",
+    "mixed": "#9467bd",
+}
+METHOD_ORDER = {"pic": 0, "flip": 1, "apic": 2, "mixed": 3}
 
 MAX_DIV_RE = re.compile(
     r"Step\s+(\d+)\s*/\s*(\d+).*?max\s+\|div\|\s*=\s*"
@@ -103,6 +112,19 @@ class RunSpec(NamedTuple):
     raw_dir: Path
 
 
+class VideoOptions(NamedTuple):
+    enabled: bool
+    methods: Tuple[str, ...]
+    root: Path
+    fps: int
+    sample: int
+    width: int
+    height: int
+    workers: int
+    cmap: str
+    mode: str
+
+
 def merge_row(row, extra):
     merged = dict(row)
     merged.update(extra)
@@ -120,7 +142,13 @@ def run_process(command, cwd, env=None):
     )
 
 
-def parse_int_list(value: Optional[str], default: Iterable[int]) -> Tuple[int, ...]:
+def parse_int_list(
+    value: Optional[str],
+    default: Iterable[int],
+    *,
+    min_value: int = 1,
+    value_name: str = "integer list",
+) -> Tuple[int, ...]:
     if not value:
         return tuple(default)
     parsed = []
@@ -129,11 +157,11 @@ def parse_int_list(value: Optional[str], default: Iterable[int]) -> Tuple[int, .
         if not chunk:
             continue
         item = int(chunk)
-        if item < 1:
-            raise ValueError("integer list values must be positive")
+        if item < min_value:
+            raise ValueError(f"{value_name} values must be >= {min_value}")
         parsed.append(item)
     if not parsed:
-        raise ValueError("empty integer list")
+        raise ValueError(f"empty {value_name}")
     return tuple(dict.fromkeys(parsed))
 
 
@@ -164,6 +192,23 @@ def parse_name_list(value: Optional[str], valid: Iterable[str]) -> Tuple[str, ..
         parsed.append(item)
     if not parsed:
         raise ValueError("empty name list")
+    return tuple(dict.fromkeys(parsed))
+
+
+def parse_video_methods(value: Optional[str]) -> Tuple[str, ...]:
+    if not value or value == "all":
+        return VIDEO_METHODS
+    parsed = []
+    valid = set(VIDEO_METHODS)
+    for chunk in value.split(","):
+        item = chunk.strip().lower()
+        if not item:
+            continue
+        if item not in valid:
+            raise ValueError(f"unknown video method '{item}', expected one of {VIDEO_METHODS}")
+        parsed.append(item)
+    if not parsed:
+        raise ValueError("empty video method list")
     return tuple(dict.fromkeys(parsed))
 
 
@@ -250,14 +295,19 @@ def load_config(path: Path) -> dict:
         return json.load(handle)
 
 
-def disable_heavy_outputs(cfg: dict, *, need_velocity_fields: bool = False) -> None:
+def disable_heavy_outputs(
+    cfg: dict,
+    *,
+    need_velocity_fields: bool = False,
+    need_particles: bool = False,
+) -> None:
     cfg["write_u"] = need_velocity_fields
     cfg["write_v"] = need_velocity_fields
     cfg["write_p"] = False
     cfg["write_div"] = False
     cfg["write_smoke"] = False
     cfg["write_norm_velocity"] = True
-    cfg["write_particles"] = False
+    cfg["write_particles"] = need_particles
 
 
 def make_config(spec: RunSpec, args: argparse.Namespace) -> dict:
@@ -294,15 +344,19 @@ def make_config(spec: RunSpec, args: argparse.Namespace) -> dict:
         solver["max_iterations"] = args.solver_max_iterations
     cfg["solver"] = solver
 
-    disable_heavy_outputs(cfg, need_velocity_fields=args.analysis in ("vorticity", "ppc"))
+    disable_heavy_outputs(
+        cfg,
+        need_velocity_fields=args.analysis in ("vorticity", "ppc"),
+        need_particles=args.write_particles or args.make_videos,
+    )
     return cfg
 
 
 def make_specs(args: argparse.Namespace) -> List[RunSpec]:
     tests = parse_name_list(args.test, REPORT_TESTS.keys())
     methods = parse_name_list(args.methods, REPORT_METHODS)
-    ppcs = parse_int_list(args.ppc, (3,))
-    threads = parse_int_list(args.threads, (scheduler_threads(),))
+    ppcs = parse_int_list(args.ppc, (3,), min_value=0, value_name="ppc")
+    threads = parse_int_list(args.threads, (scheduler_threads(),), value_name="thread")
     flip_coefs = parse_float_list(args.flip_coef_pic, (0.05,))
     out_root = args.out.resolve()
     misc_root = args.misc_dir.resolve()
@@ -615,6 +669,47 @@ def save_vorticity_images(
     plt.close(fig)
 
 
+def video_title_for(spec: RunSpec) -> str:
+    row = base_row(spec)
+    return f"{spec.test} - {label_for(row, include_ppc=True)}"
+
+
+def should_make_video(spec: RunSpec, options: VideoOptions) -> bool:
+    if not options.enabled:
+        return False
+    return method_kind(base_row(spec)) in options.methods
+
+
+def write_particle_video(spec: RunSpec, options: VideoOptions) -> None:
+    pvd_path = spec.raw_dir / "particles.pvd"
+    if not pvd_path.exists():
+        print(f"[video] {spec.name}: particles.pvd not found; skipping")
+        return
+    try:
+        import particles_to_mp4
+
+        vtp_paths = [path for path in particles_to_mp4.parse_pvd(pvd_path) if path.exists()]
+        if options.sample > 1:
+            vtp_paths = vtp_paths[:: options.sample]
+        if not vtp_paths:
+            print(f"[video] {spec.name}: no VTP frames found; skipping")
+            return
+        out_path = options.root / f"{spec.name}.mp4"
+        particles_to_mp4.build_mp4(
+            vtp_paths,
+            out_path,
+            fps=options.fps,
+            cmap_name=options.cmap,
+            width=options.width,
+            height=options.height,
+            title=video_title_for(spec),
+            mode=options.mode,
+            n_workers=options.workers,
+        )
+    except Exception as exc:
+        print(f"[warn] {spec.name}: could not write particle video: {exc}")
+
+
 def run_one(
     spec: RunSpec,
     binary: Path,
@@ -624,6 +719,7 @@ def run_one(
     write_images: bool,
     img_root: Path,
     image_formats: Iterable[str],
+    video_options: VideoOptions,
 ) -> Tuple[dict, List[dict], List[dict], List[dict]]:
     spec.raw_dir.mkdir(parents=True, exist_ok=True)
     cfg = load_config(spec.config_path)
@@ -663,6 +759,8 @@ def run_one(
                 except Exception as exc:
                     print(f"[warn] {spec.name}: could not extract vorticity: {exc}")
             div_rows = parse_max_div(spec, combined, cfg)
+            if should_make_video(spec, video_options):
+                write_particle_video(spec, video_options)
     finally:
         if not keep_raw and spec.raw_dir.exists():
             shutil.rmtree(spec.raw_dir)
@@ -812,11 +910,68 @@ def save_comparison_summary(summary_rows: List[dict], out_root: Path) -> None:
     write_csv(out_root / "comparison_summary.csv", rows)
 
 
-def label_for(row: dict) -> str:
-    label = f"{row['method'].upper()} ppc={row['ppc']}"
-    if row.get("flip_coef_pic") not in ("", None):
-        label += f" coefPic={row['flip_coef_pic']}"
+def optional_float(value, default: Optional[float] = None) -> Optional[float]:
+    if value in ("", None):
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if math.isfinite(parsed) else default
+
+
+def method_kind(row_or_spec) -> str:
+    method = row_or_spec["method"] if isinstance(row_or_spec, dict) else row_or_spec.method
+    if method != "flip":
+        return method
+    coef = (
+        optional_float(row_or_spec.get("flip_coef_pic"))
+        if isinstance(row_or_spec, dict)
+        else row_or_spec.flip_coef_pic
+    )
+    if coef is None or abs(float(coef)) < 1e-14:
+        return "flip"
+    return "mixed"
+
+
+def display_float(value) -> str:
+    parsed = optional_float(value)
+    if parsed is None:
+        return ""
+    return f"{parsed:g}"
+
+
+def label_for(row: dict, *, include_ppc: bool = True) -> str:
+    method = row.get("method", "")
+    kind = method_kind(row)
+    if method == "pic":
+        label = "PIC"
+    elif method == "apic":
+        label = "APIC"
+    elif kind == "flip":
+        label = "FLIP"
+    elif kind == "mixed":
+        label = f"Mixed PIC-FLIP {display_float(row.get('flip_coef_pic'))}"
+    else:
+        label = str(method).upper()
+    if include_ppc and row.get("ppc") not in ("", None):
+        label += f" ppc={row['ppc']}"
     return label
+
+
+def method_sort_key(row: dict) -> Tuple[int, float, int]:
+    kind = method_kind(row)
+    coef = optional_float(row.get("flip_coef_pic"), 0.0) or 0.0
+    ppc = int(float(row.get("ppc", 0) or 0))
+    return METHOD_ORDER.get(kind, 99), coef, ppc
+
+
+def method_color(row: dict):
+    kind = method_kind(row)
+    if kind == "mixed":
+        coef = optional_float(row.get("flip_coef_pic"), 0.0) or 0.0
+        return "#9467bd" if coef <= 0.05 else "#8c564b"
+    return METHOD_COLORS.get(kind)
 
 
 def postprocess_csv(out_root: Path) -> None:
@@ -843,15 +998,26 @@ def rows_for_test_ppc(rows: List[dict], test: str, ppc: str) -> List[dict]:
         for row in rows
         if row.get("test") == test
         and row.get("ppc") == ppc
-        and int(row.get("repeat", 0)) == 0
     ]
 
 
-def group_rows_by_run(rows: List[dict]) -> Dict[str, List[dict]]:
-    by_run: Dict[str, List[dict]] = {}
+def group_rows_by_key(rows: List[dict], y_key: str, key_func):
+    grouped: Dict[Tuple, dict] = {}
     for row in rows:
-        by_run.setdefault(row["run"], []).append(row)
-    return by_run
+        value = row.get(y_key)
+        if value in ("", None):
+            continue
+        try:
+            time_value = float(row["time"])
+            y_value = float(value)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not (math.isfinite(time_value) and math.isfinite(y_value)):
+            continue
+        key = key_func(row)
+        bucket = grouped.setdefault(key, {"row": row, "times": {}})
+        bucket["times"].setdefault(time_value, []).append(y_value)
+    return grouped
 
 
 def mark_no_data(ax, title: str, message: str) -> None:
@@ -869,78 +1035,148 @@ def plot_metric_series(
     y_label: str,
     title: str,
     missing_message: str,
+    key_func,
+    label_func,
+    color_func=None,
+    legend_columns: int = 1,
 ) -> bool:
     if not rows:
         mark_no_data(ax, title, missing_message)
         return False
 
     plotted = False
-    for _run, group in sorted(group_rows_by_run(rows).items()):
-        points = []
-        for row in sorted(group, key=lambda item: float(item["time"])):
-            value = row.get(y_key)
-            if value in ("", None):
-                continue
-            parsed = float(value)
-            if math.isfinite(parsed):
-                points.append((float(row["time"]), parsed))
-        if not points:
+    grouped = group_rows_by_key(rows, y_key, key_func)
+    for _key, bucket in sorted(grouped.items(), key=lambda item: method_sort_key(item[1]["row"])):
+        times = sorted(bucket["times"])
+        if not times:
             continue
+        means = [mean(bucket["times"][time]) for time in times]
+        deviations = [std(bucket["times"][time]) for time in times]
+        row = bucket["row"]
+        color = color_func(row) if color_func else None
         ax.plot(
-            [time for time, _value in points],
-            [value for _time, value in points],
+            times,
+            means,
             lw=1.5,
-            label=label_for(group[0]),
+            label=label_func(row),
+            color=color,
         )
+        if any(math.isfinite(value) and value > 0.0 for value in deviations):
+            lower = [m - s for m, s in zip(means, deviations)]
+            upper = [m + s for m, s in zip(means, deviations)]
+            ax.fill_between(times, lower, upper, color=color, alpha=0.12)
         plotted = True
 
     if not plotted:
         mark_no_data(ax, title, missing_message)
         return False
 
-    ax.set_xlabel("Simulation time [s]")
+    ax.set_xlabel("Time t [s]")
     ax.set_ylabel(y_label)
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(ncol=legend_columns)
     return True
 
 
-def plot_energy_vorticity_ppc(
+def plot_method_metric_for_ppc(
     test: str,
     ppc: str,
-    ke_rows: List[dict],
-    vorticity_rows: List[dict],
+    rows: List[dict],
+    y_key: str,
+    y_label: str,
+    title: str,
+    output_name: str,
     plot_dir: Path,
     image_formats: Iterable[str],
 ) -> bool:
-    energy_rows = rows_for_test_ppc(ke_rows, test, ppc)
-    vort_rows = rows_for_test_ppc(vorticity_rows, test, ppc)
-    if not energy_rows and not vort_rows:
+    metric_rows = rows_for_test_ppc(rows, test, ppc)
+    if not metric_rows:
         return False
 
-    fig, (energy_ax, vort_ax) = plt.subplots(1, 2, figsize=(15, 5))
-    plot_metric_series(
-        energy_ax,
-        energy_rows,
-        "normalized_ke",
-        "Normalized kinetic energy",
-        "Energy",
-        "No energy CSV rows",
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ok = plot_metric_series(
+        ax,
+        metric_rows,
+        y_key,
+        y_label,
+        title,
+        f"No {y_label} CSV rows",
+        key_func=lambda row: (row["method"], row.get("flip_coef_pic", "")),
+        label_func=lambda row: label_for(row, include_ppc=False),
+        color_func=method_color,
     )
-    plot_metric_series(
-        vort_ax,
-        vort_rows,
-        "enstrophy",
-        "Enstrophy",
-        "Vorticity",
-        "No vorticity CSV rows",
-    )
-    fig.suptitle(f"{test}: energy and vorticity, ppc={ppc}")
+    if not ok:
+        plt.close(fig)
+        return False
     fig.tight_layout()
-    save_figure(fig, plot_dir / f"{test}_energy_vorticity_ppc{ppc}", formats=image_formats)
+    save_figure(fig, plot_dir / output_name, formats=image_formats)
     plt.close(fig)
     return True
+
+
+def plot_pic_ppc_energy(
+    test: str,
+    summary_rows: List[dict],
+    ke_rows: List[dict],
+    plot_dir: Path,
+    image_formats: Iterable[str],
+) -> None:
+    pic_ke_rows = [
+        row for row in ke_rows if row.get("test") == test and row.get("method") == "pic"
+    ]
+    ppcs = sorted({int(float(row["ppc"])) for row in pic_ke_rows if row.get("ppc") not in ("", None)})
+    if len(ppcs) <= 1:
+        return
+
+    cmap = plt.get_cmap("viridis")
+    ppc_min, ppc_max = min(ppcs), max(ppcs)
+
+    def ppc_color(row: dict):
+        ppc = int(float(row.get("ppc", 0) or 0))
+        if ppc_max == ppc_min:
+            return cmap(0.5)
+        return cmap((ppc - ppc_min) / (ppc_max - ppc_min))
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    plot_metric_series(
+        ax,
+        pic_ke_rows,
+        "kinetic_energy",
+        "Kinetic energy E_k",
+        f"{test}: PIC kinetic energy E_k(t) by particles per cell",
+        "No PIC kinetic energy rows",
+        key_func=lambda row: (int(float(row["ppc"])),),
+        label_func=lambda row: f"ppc={int(float(row['ppc']))}",
+        color_func=ppc_color,
+        legend_columns=3 if len(ppcs) > 12 else 2,
+    )
+    fig.tight_layout()
+    save_figure(fig, plot_dir / f"{test}_pic_ppc_ek_time", formats=image_formats)
+    plt.close(fig)
+
+    final_groups: Dict[int, List[float]] = {}
+    for row in summary_rows:
+        if row.get("test") != test or row.get("method") != "pic" or row.get("status") != "ok":
+            continue
+        value = optional_float(row.get("final_kinetic_energy"))
+        if value is None:
+            continue
+        final_groups.setdefault(int(float(row["ppc"])), []).append(value)
+    if not final_groups:
+        return
+    xs = sorted(final_groups)
+    ys = [mean(final_groups[ppc]) for ppc in xs]
+    yerr = [std(final_groups[ppc]) for ppc in xs]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.errorbar(xs, ys, yerr=yerr, fmt="o-", capsize=4, color="#1f77b4")
+    ax.set_xlabel("Particles per cell per direction ppcx = ppcy")
+    ax.set_ylabel("Final kinetic energy E_k")
+    ax.set_title(f"{test}: final PIC kinetic energy versus ppc")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    save_figure(fig, plot_dir / f"{test}_pic_ppc_final_ek", formats=image_formats)
+    plt.close(fig)
 
 
 def plot_all(
@@ -978,8 +1214,8 @@ def plot_all(
         labels = []
         wall = []
         final_ke = []
-        for _key, group in sorted(groups.items()):
-            labels.append(label_for(group[0]))
+        for _key, group in sorted(groups.items(), key=lambda item: method_sort_key(item[1][0])):
+            labels.append(label_for(group[0], include_ppc=True))
             wall.append(mean([float(row["wall_time_s"]) for row in group]))
             ke_values = finite_values(group, "final_normalized_ke")
             final_ke.append(mean(ke_values))
@@ -998,22 +1234,37 @@ def plot_all(
             fig, ax = plt.subplots(figsize=(max(8, 0.5 * len(labels)), 5))
             ax.bar(range(len(labels)), final_ke)
             ax.set_xticks(range(len(labels)), labels, rotation=35, ha="right")
-            ax.set_ylabel("Final normalized kinetic energy")
-            ax.set_title(f"{test}: final kinetic energy")
+            ax.set_ylabel("Final kinetic energy ratio")
+            ax.set_title(f"{test}: final E_k / reference E_k")
             ax.grid(axis="y", alpha=0.3)
             fig.tight_layout()
             save_figure(fig, plot_dir / f"{test}_final_ke", formats=image_formats)
             plt.close(fig)
 
         for ppc in sorted({row["ppc"] for row in test_summary}, key=lambda value: int(value)):
-            plot_energy_vorticity_ppc(
+            plot_method_metric_for_ppc(
                 test,
                 ppc,
                 ke_rows,
-                vorticity_rows,
+                "kinetic_energy",
+                "Kinetic energy E_k",
+                f"{test}: kinetic energy E_k(t), ppc={ppc}",
+                f"{test}_ek_time_ppc{ppc}",
                 plot_dir,
                 image_formats,
             )
+            plot_method_metric_for_ppc(
+                test,
+                ppc,
+                vorticity_rows,
+                "mean_abs_vorticity",
+                "Mean vorticity V = mean |omega|",
+                f"{test}: vorticity V(t), ppc={ppc}",
+                f"{test}_vorticity_time_ppc{ppc}",
+                plot_dir,
+                image_formats,
+            )
+        plot_pic_ppc_energy(test, summary_rows, ke_rows, plot_dir, image_formats)
     print(f"[plot] wrote plots under {plot_dir}")
 
 
@@ -1060,6 +1311,25 @@ def main() -> int:
     parser.add_argument("--no-plots", action="store_true")
     parser.add_argument("--no-run-logs", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--write-particles",
+        action="store_true",
+        help="write particles.pvd/VTP during runs",
+    )
+    parser.add_argument(
+        "--make-videos",
+        action="store_true",
+        help="encode particle MP4 clips before raw output is cleaned",
+    )
+    parser.add_argument("--video-dir", type=Path)
+    parser.add_argument("--video-methods", default="pic,flip,apic")
+    parser.add_argument("--video-cmap", default="viridis")
+    parser.add_argument("--video-mode", choices=("speed", "density"), default="speed")
+    parser.add_argument("--video-fps", type=int, default=30)
+    parser.add_argument("--video-sample", type=int, default=1)
+    parser.add_argument("--video-width", type=int, default=1280)
+    parser.add_argument("--video-height", type=int, default=720)
+    parser.add_argument("--video-workers", type=int, default=max(1, min(os.cpu_count() or 1, 8)))
     parser.add_argument("--samples", type=int, default=40)
     parser.add_argument("--nt", type=int)
     parser.add_argument("--nx", type=int)
@@ -1074,8 +1344,12 @@ def main() -> int:
     args.out = args.out.resolve()
     args.misc_dir = (args.misc_dir or default_misc_dir(args.out)).resolve()
     args.img_dir = (args.img_dir or default_img_dir(args.out)).resolve()
+    args.video_dir = (args.video_dir or (VIDEO_DIR / args.out.name)).resolve()
+    args.video_methods = parse_video_methods(args.video_methods)
     args.image_formats = parse_formats(args.image_formats)
     args.build_dir = args.build_dir.resolve()
+    if args.make_videos:
+        args.write_particles = True
 
     if args.plot_only:
         postprocess_csv(args.out)
@@ -1102,6 +1376,18 @@ def main() -> int:
         return 0
 
     binary = build_binary(args.skip_build, args.build_jobs, args.build_dir)
+    video_options = VideoOptions(
+        enabled=args.make_videos,
+        methods=args.video_methods,
+        root=args.video_dir,
+        fps=max(1, args.video_fps),
+        sample=max(1, args.video_sample),
+        width=max(2, args.video_width),
+        height=max(2, args.video_height),
+        workers=max(1, args.video_workers),
+        cmap=args.video_cmap,
+        mode=args.video_mode,
+    )
     summary_rows = [] if args.force else read_csv(args.out / "summary.csv")
     ke_rows = [] if args.force else read_csv(args.out / "kinetic_energy.csv")
     div_rows = [] if args.force else read_csv(args.out / "max_div.csv")
@@ -1130,6 +1416,7 @@ def main() -> int:
             not args.no_plots,
             args.img_dir,
             args.image_formats,
+            video_options,
         )
         summary_rows.append(summary)
         ke_rows.extend(ke)

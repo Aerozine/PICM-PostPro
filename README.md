@@ -30,6 +30,7 @@ Generated artifacts stay inside this repository:
 data/                 CSV files used by plotting
 data/misc/            generated configs, logs, and temporary postpro inputs
 img/                  generated figures: png, svg, pdf, jpg
+video/                generated MP4 particle clips
 ```
 
 The Slurm jobs delete raw simulation fields after CSV extraction by default.
@@ -46,6 +47,8 @@ make build
 make sbatch
 make postpro
 make plot
+make postpro-run
+make video
 make clean
 ```
 
@@ -56,6 +59,7 @@ make -C PostPro build
 make -C PostPro sbatch
 make -C PostPro postpro
 make -C PostPro plot
+make -C PostPro video
 make -C PostPro clean
 ```
 
@@ -66,8 +70,14 @@ make -C PostPro clean
 - `make postpro` regenerates derived CSV files from `data/`.
 - `make plot` writes energy/vorticity comparison figures into `img/` in
   `png`, `svg`, `pdf`, and `jpg` formats.
+- `make postpro-run` builds PICM, runs the selected PIC/FLIP/APIC report
+  simulations, extracts CSV data, writes plots, and encodes particle MP4 clips
+  with the `viridis` colormap under `video/postpro_run/`.
+- `make video` recursively scans `test/PIC`, `test/FLIP`, and `test/APIC`,
+  runs every JSON with `write_particles: true`, and writes one `viridis` MP4
+  per config under `video/` using the same directory structure.
 - `make clean` removes PICM build folders, raw simulation fields, image output,
-  and Python caches while keeping CSV files under `data/`.
+  video output, and Python caches while keeping CSV files under `data/`.
 
 ## Server Jobs
 
@@ -87,7 +97,7 @@ Common overrides:
 
 ```bash
 PICM_REPORT_TEST=dambreak make sbatch
-PICM_PPC_VALUES=2,3,4 sbatch slurm/study_ppc_impact.slurm
+PICM_PPC_VALUES=0,1,2,3,4,5 sbatch slurm/study_ppc_impact.slurm
 PICM_FLIP_COEF_PIC=0,0.02,0.05,0.1 sbatch slurm/study_vorticity.slurm
 PICM_SCALING_THREADS=1,2,4,8,16,32,64 sbatch slurm/study_pic_scaling.slurm
 PICM_SOLVER_TOLERANCES=1e-1,1e-2,1e-3 sbatch slurm/study_iterative_solvers.slurm
@@ -101,14 +111,23 @@ Defaults:
 PICM_POSTPRO_DATA=PICM/PostPro/data
 PICM_POSTPRO_MISC=PICM/PostPro/data/misc
 PICM_POSTPRO_IMG=PICM/PostPro/img
+PICM_POSTPRO_VIDEO=PICM/PostPro/video
 ```
 
 You normally do not need to set these.
 
 ## Plot Inputs
 
-`make plot` uses `kinetic_energy.csv` and `vorticity.csv` for the main report
-figures. `max_div.csv` is still kept as diagnostic CSV data, but it is not used
-as the main PPC plot. If those two CSV files are empty, rerun the Slurm studies
-with the current PostPro scripts so energy and vorticity are extracted before
-raw VTK files are deleted.
+`make plot` uses `kinetic_energy.csv`, `vorticity.csv`, and
+`iterations.csv` for the main report figures:
+
+- `E_k(t)` is the absolute kinetic-energy time series.
+- `V(t)` is the mean absolute vorticity time series.
+- `Iter(t)` is the pressure-solver iteration count per solve.
+- the PPC study plots PIC `E_k(t)` for `ppc=0..25` by default, plus final
+  kinetic energy versus ppc.
+
+`max_div.csv` is still kept as diagnostic CSV data, but it is not used as the
+main PPC plot. If the energy or vorticity CSV files are empty, rerun the Slurm
+studies or `make postpro-run` with the current PostPro scripts so the metrics
+are extracted before raw VTK files are deleted.

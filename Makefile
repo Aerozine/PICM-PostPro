@@ -12,11 +12,33 @@ PICM_ROOT ?= $(shell \
 DATA_DIR ?= $(POSTPRO_ROOT)/data
 MISC_DIR ?= $(DATA_DIR)/misc
 IMG_DIR ?= $(POSTPRO_ROOT)/img
+VIDEO_DIR ?= $(POSTPRO_ROOT)/video
 RELEASE_BUILD_DIR ?= $(PICM_ROOT)/build-report-release
 DEBUG_BUILD_DIR ?= $(PICM_ROOT)/build-solver-debug
 BUILD_JOBS ?= 32
 PYTHON ?= python3
 SBATCH ?= sbatch
+
+POSTPRO_RUN_TEST ?= falling-block-water
+POSTPRO_RUN_METHODS ?= pic,flip,apic
+POSTPRO_RUN_PPC ?= 3
+POSTPRO_RUN_FLIP_COEF ?= 0
+POSTPRO_RUN_THREADS ?= $(shell nproc 2>/dev/null || echo 1)
+POSTPRO_RUN_SAMPLES ?= 40
+POSTPRO_RUN_OUT ?= $(DATA_DIR)/postpro_run
+POSTPRO_RUN_MISC ?= $(MISC_DIR)/postpro_run
+POSTPRO_RUN_IMG ?= $(IMG_DIR)/postpro_run
+POSTPRO_VIDEO_WORKERS ?= 1
+POSTPRO_RUN_ARGS ?=
+VIDEO_CONFIG_ROOTS ?= test/PIC,test/FLIP,test/APIC
+VIDEO_MISC ?= $(MISC_DIR)/video
+VIDEO_THREADS ?= $(shell nproc 2>/dev/null || echo 1)
+VIDEO_FPS ?= 30
+VIDEO_SAMPLE ?= 1
+VIDEO_WIDTH ?= 1280
+VIDEO_HEIGHT ?= 720
+VIDEO_WORKERS ?= 1
+VIDEO_ARGS ?=
 
 STUDY_SLURM := \
 	$(POSTPRO_ROOT)/slurm/study_energy.slurm \
@@ -25,7 +47,7 @@ STUDY_SLURM := \
 	$(POSTPRO_ROOT)/slurm/study_iterative_solvers.slurm \
 	$(POSTPRO_ROOT)/slurm/study_pic_scaling.slurm
 
-.PHONY: clean build require-build sbatch postpro plot
+.PHONY: clean build build-release require-build sbatch postpro plot postpro-run video
 
 clean:
 	find "$(PICM_ROOT)" -maxdepth 1 -type d \( -name 'build*' -o -name 'cmake-build*' \) -prune -exec rm -rf {} +
@@ -34,11 +56,14 @@ clean:
 		find "$(MISC_DIR)" -type f \( -name '*.vti' -o -name '*.vtp' -o -name '*.pvd' -o -name '*.mp4' \) -delete; \
 	fi
 	rm -rf "$(IMG_DIR)"
+	rm -rf "$(VIDEO_DIR)"
 	find "$(POSTPRO_ROOT)" "$(PICM_ROOT)" -type d -name __pycache__ -prune -exec rm -rf {} +
 
-build:
+build-release:
 	cmake -S "$(PICM_ROOT)" -B "$(RELEASE_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DUSE_GPU=OFF -DUSE_PARALLEL=ON
 	cmake --build "$(RELEASE_BUILD_DIR)" -j"$(BUILD_JOBS)"
+
+build: build-release
 	cmake -S "$(PICM_ROOT)" -B "$(DEBUG_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Debug -DUSE_GPU=OFF -DUSE_PARALLEL=ON
 	cmake --build "$(DEBUG_BUILD_DIR)" -j"$(BUILD_JOBS)"
 
@@ -57,3 +82,40 @@ postpro:
 
 plot:
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/plot_all.py" --data "$(DATA_DIR)" --img "$(IMG_DIR)"
+
+postpro-run: build-release
+	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" PICM_POSTPRO_VIDEO="$(VIDEO_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/report_compare.py" \
+		--analysis vorticity \
+		--test "$(POSTPRO_RUN_TEST)" \
+		--methods "$(POSTPRO_RUN_METHODS)" \
+		--ppc "$(POSTPRO_RUN_PPC)" \
+		--flip-coef-pic "$(POSTPRO_RUN_FLIP_COEF)" \
+		--threads "$(POSTPRO_RUN_THREADS)" \
+		--samples "$(POSTPRO_RUN_SAMPLES)" \
+		--out "$(POSTPRO_RUN_OUT)" \
+		--misc-dir "$(POSTPRO_RUN_MISC)" \
+		--img-dir "$(POSTPRO_RUN_IMG)" \
+		--build-dir "$(RELEASE_BUILD_DIR)" \
+		--skip-build \
+		--force \
+		--make-videos \
+		--video-dir "$(VIDEO_DIR)/postpro_run" \
+		--video-methods "pic,flip,apic" \
+		--video-cmap "viridis" \
+		--video-workers "$(POSTPRO_VIDEO_WORKERS)" \
+		$(POSTPRO_RUN_ARGS)
+
+video: build-release
+	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_VIDEO="$(VIDEO_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/video_all.py" \
+		--binary "$(RELEASE_BUILD_DIR)/bin/PIC" \
+		--config-roots "$(VIDEO_CONFIG_ROOTS)" \
+		--video-dir "$(VIDEO_DIR)" \
+		--misc-dir "$(VIDEO_MISC)" \
+		--threads "$(VIDEO_THREADS)" \
+		--fps "$(VIDEO_FPS)" \
+		--sample "$(VIDEO_SAMPLE)" \
+		--width "$(VIDEO_WIDTH)" \
+		--height "$(VIDEO_HEIGHT)" \
+		--workers "$(VIDEO_WORKERS)" \
+		--cmap "viridis" \
+		$(VIDEO_ARGS)

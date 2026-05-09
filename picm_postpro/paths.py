@@ -7,6 +7,7 @@ SCRIPTS_DIR = POSTPRO_ROOT
 DATA_DIR = Path(os.environ.get("PICM_POSTPRO_DATA", POSTPRO_ROOT / "data")).expanduser()
 MISC_DIR = Path(os.environ.get("PICM_POSTPRO_MISC", DATA_DIR / "misc")).expanduser()
 IMG_DIR = Path(os.environ.get("PICM_POSTPRO_IMG", POSTPRO_ROOT / "img")).expanduser()
+VIDEO_DIR = Path(os.environ.get("PICM_POSTPRO_VIDEO", POSTPRO_ROOT / "video")).expanduser()
 
 
 def _is_picm_root(path: Path) -> bool:

@@ -3,6 +3,8 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+*.err
+*.out
 # C extensions
 *.so
 
@@ -219,6 +221,7 @@ __marimo__/
 
 # PICM PostPro generated outputs
 img/
+video/
 data/misc/
 data/**/*.vti
 data/**/*.vtp

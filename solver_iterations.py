@@ -194,7 +194,8 @@ def write_plan_and_configs(specs: List[SolverSpec], base_cfg: dict, args: argpar
     write_csv(args.out.resolve() / "plan.csv", rows)
 
 
-def parse_iterations(spec: SolverSpec, text: str) -> List[dict]:
+def parse_iterations(spec: SolverSpec, text: str, cfg: dict) -> List[dict]:
+    dt = float(cfg.get("dt", 1.0))
     rows = []
     for index, match in enumerate(ITER_RE.finditer(text), start=1):
         rows.append(
@@ -202,6 +203,8 @@ def parse_iterations(spec: SolverSpec, text: str) -> List[dict]:
                 base_row(spec),
                 {
                 "solve": index,
+                "step": index,
+                "time": index * dt,
                 "debug_solver_name": match.group(1).rstrip(":"),
                 "pressure_iters": int(match.group(2) or match.group(3)),
                 "hit_max_iterations": bool(match.group(3)),
@@ -246,7 +249,8 @@ def run_one(
             pass
 
     combined = result.stdout + "\n" + result.stderr
-    iter_rows = parse_iterations(spec, combined)
+    cfg = rc.load_config(spec.config_path)
+    iter_rows = parse_iterations(spec, combined, cfg)
     counts = [int(row["pressure_iters"]) for row in iter_rows]
     summary = rc.merge_row(base_row(spec), {
         "status": "ok" if result.returncode == 0 else "failed",
@@ -271,6 +275,68 @@ def postprocess_csv(out_root: Path) -> None:
     return None
 
 
+def solver_sort_key(row: dict) -> int:
+    try:
+        return CPU_SOLVERS.index(row["solver"])
+    except ValueError:
+        return len(CPU_SOLVERS)
+
+
+def optional_float(value):
+    if value in ("", None):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if rc.math.isfinite(parsed) else None
+
+
+def plot_iteration_time_series(
+    iter_rows: List[dict],
+    tolerance: str,
+    plot_dir: Path,
+    image_formats: Tuple[str, ...],
+) -> None:
+    tolerance_rows = [row for row in iter_rows if str(row.get("tolerance")) == str(tolerance)]
+    if not tolerance_rows:
+        return
+
+    grouped = {}
+    has_time = any(row.get("time") not in ("", None) for row in tolerance_rows)
+    x_key = "time" if has_time else "solve"
+    for row in tolerance_rows:
+        x_value = optional_float(row.get(x_key))
+        y_value = optional_float(row.get("pressure_iters"))
+        if x_value is None or y_value is None:
+            continue
+        grouped.setdefault(row["solver"], {}).setdefault(x_value, []).append(y_value)
+    if not grouped:
+        return
+
+    fig, ax = rc.plt.subplots(figsize=(10, 5.5))
+    for solver in sorted(grouped, key=lambda name: CPU_SOLVERS.index(name) if name in CPU_SOLVERS else 99):
+        time_map = grouped[solver]
+        xs = sorted(time_map)
+        ys = [rc.mean(time_map[x]) for x in xs]
+        ax.plot(xs, ys, lw=1.5, label=solver)
+    y_values = [value for time_map in grouped.values() for values in time_map.values() for value in values]
+    if y_values and max(y_values) / max(min(value for value in y_values if value > 0), 1.0) > 50:
+        ax.set_yscale("log")
+    ax.set_xlabel("Time t [s]" if has_time else "Pressure solve index")
+    ax.set_ylabel("Iterations per pressure solve")
+    ax.set_title(f"Dambreak: pressure iterations over time, tolerance={tolerance}")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    save_figure(
+        fig,
+        plot_dir / f"dambreak_solver_iter_time_tol{rc.slug_float(float(tolerance))}",
+        formats=image_formats,
+    )
+    rc.plt.close(fig)
+
+
 def plot_iterations(
     out_root: Path,
     img_root: Path,
@@ -281,20 +347,21 @@ def plot_iterations(
     summary_rows = [row for row in read_csv(out_root / "summary.csv") if row.get("status") == "ok"]
     if not summary_rows:
         return
+    iter_rows = read_csv(out_root / "iterations.csv")
     plot_dir = img_root
     plot_dir.mkdir(parents=True, exist_ok=True)
     grouped = {}
     for row in summary_rows:
         grouped.setdefault(str(row["tolerance"]), []).append(row)
     for tolerance, rows in grouped.items():
-        rows.sort(key=lambda row: row["solver"])
+        rows.sort(key=solver_sort_key)
         labels = [row["solver"] for row in rows]
         values = [float(row["mean_pressure_iters"]) for row in rows]
         fig, ax = rc.plt.subplots(figsize=(9, 5))
         ax.bar(range(len(labels)), values)
         ax.set_xticks(range(len(labels)), labels, rotation=25, ha="right")
-        ax.set_ylabel("Mean pressure iterations")
-        ax.set_title(f"Dambreak solver comparison, tolerance={tolerance}")
+        ax.set_ylabel("Mean iterations per pressure solve")
+        ax.set_title(f"Dambreak: mean pressure iterations, tolerance={tolerance}")
         ax.grid(axis="y", alpha=0.3)
         fig.tight_layout()
         save_figure(
@@ -303,6 +370,7 @@ def plot_iterations(
             formats=image_formats,
         )
         rc.plt.close(fig)
+        plot_iteration_time_series(iter_rows, tolerance, plot_dir, image_formats)
 
 
 def main() -> int:
