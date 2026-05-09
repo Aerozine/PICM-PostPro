@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# PICM PostPro generated outputs
+img/
+data/misc/
+data/**/*.vti
+data/**/*.vtp
+data/**/*.pvd
+data/**/*.mp4
