@@ -1,13 +1,11 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional, Tuple, Union
 
 
 DEFAULT_FORMATS = ("png", "svg", "pdf", "jpg")
 
 
-def parse_formats(value: str | Iterable[str] | None) -> tuple[str, ...]:
+def parse_formats(value: Optional[Union[str, Iterable[str]]]) -> Tuple[str, ...]:
     if value is None:
         return DEFAULT_FORMATS
     if isinstance(value, str):

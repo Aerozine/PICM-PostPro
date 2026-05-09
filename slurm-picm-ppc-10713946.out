@@ -1,0 +1,478 @@
+[study] PPC impact
+[study] PICM_ROOT:  /home/users/l/d/ldelbarr/PICM
+[study] PostPro:    /home/users/l/d/ldelbarr/PICM/PostPro
+[study] test:       falling-block-water
+[study] methods:    pic,flip,apic
+[study] ppc values: 1,2,3,4,5
+[study] coefPic:    0.05
+[study] threads:    32
+[study] csv output: /home/users/l/d/ldelbarr/PICM/PostPro/data/study_ppc_impact
+[study] misc:       /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact
+[study] img:        /home/users/l/d/ldelbarr/PICM/PostPro/img/study_ppc_impact
+[tests] selected report comparisons:
+  falling-block-water: /home/users/l/d/ldelbarr/PICM/test/PIC/freeFallInWater.json
+    falling block in water; useful for vorticity and energy conservation
+[plan] wrote /home/users/l/d/ldelbarr/PICM/PostPro/data/study_ppc_impact/plan.csv
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=0
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=1
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=2
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=3
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=4
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=5
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=6
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=7
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=8
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=9
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=10
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=11
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=12
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=13
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=14
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=15
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=16
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=17
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=18
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=19
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=20
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=21
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=22
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=23
+  falling-block-water  pic  ppc=1  coefPic= threads=32  repeat=24
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=0
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=1
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=2
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=3
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=4
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=5
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=6
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=7
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=8
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=9
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=10
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=11
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=12
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=13
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=14
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=15
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=16
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=17
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=18
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=19
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=20
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=21
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=22
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=23
+  falling-block-water  pic  ppc=2  coefPic= threads=32  repeat=24
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=0
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=1
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=2
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=3
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=4
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=5
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=6
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=7
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=8
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=9
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=10
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=11
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=12
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=13
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=14
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=15
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=16
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=17
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=18
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=19
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=20
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=21
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=22
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=23
+  falling-block-water  pic  ppc=3  coefPic= threads=32  repeat=24
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=0
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=1
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=2
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=3
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=4
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=5
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=6
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=7
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=8
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=9
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=10
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=11
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=12
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=13
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=14
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=15
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=16
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=17
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=18
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=19
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=20
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=21
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=22
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=23
+  falling-block-water  pic  ppc=4  coefPic= threads=32  repeat=24
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=0
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=1
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=2
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=3
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=4
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=5
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=6
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=7
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=8
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=9
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=10
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=11
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=12
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=13
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=14
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=15
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=16
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=17
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=18
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=19
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=20
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=21
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=22
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=23
+  falling-block-water  pic  ppc=5  coefPic= threads=32  repeat=24
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=0
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=1
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=2
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=3
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=4
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=5
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=6
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=7
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=8
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=9
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=10
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=11
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=12
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=13
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=14
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=15
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=16
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=17
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=18
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=19
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=20
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=21
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=22
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=23
+  falling-block-water  flip ppc=1  coefPic=0.05 threads=32  repeat=24
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=0
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=1
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=2
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=3
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=4
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=5
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=6
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=7
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=8
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=9
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=10
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=11
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=12
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=13
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=14
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=15
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=16
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=17
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=18
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=19
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=20
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=21
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=22
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=23
+  falling-block-water  flip ppc=2  coefPic=0.05 threads=32  repeat=24
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=0
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=1
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=2
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=3
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=4
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=5
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=6
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=7
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=8
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=9
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=10
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=11
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=12
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=13
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=14
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=15
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=16
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=17
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=18
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=19
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=20
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=21
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=22
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=23
+  falling-block-water  flip ppc=3  coefPic=0.05 threads=32  repeat=24
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=0
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=1
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=2
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=3
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=4
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=5
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=6
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=7
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=8
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=9
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=10
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=11
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=12
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=13
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=14
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=15
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=16
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=17
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=18
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=19
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=20
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=21
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=22
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=23
+  falling-block-water  flip ppc=4  coefPic=0.05 threads=32  repeat=24
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=0
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=1
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=2
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=3
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=4
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=5
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=6
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=7
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=8
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=9
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=10
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=11
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=12
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=13
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=14
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=15
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=16
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=17
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=18
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=19
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=20
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=21
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=22
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=23
+  falling-block-water  flip ppc=5  coefPic=0.05 threads=32  repeat=24
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=0
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=1
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=2
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=3
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=4
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=5
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=6
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=7
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=8
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=9
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=10
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=11
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=12
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=13
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=14
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=15
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=16
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=17
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=18
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=19
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=20
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=21
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=22
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=23
+  falling-block-water  apic ppc=1  coefPic= threads=32  repeat=24
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=0
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=1
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=2
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=3
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=4
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=5
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=6
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=7
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=8
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=9
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=10
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=11
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=12
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=13
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=14
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=15
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=16
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=17
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=18
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=19
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=20
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=21
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=22
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=23
+  falling-block-water  apic ppc=2  coefPic= threads=32  repeat=24
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=0
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=1
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=2
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=3
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=4
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=5
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=6
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=7
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=8
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=9
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=10
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=11
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=12
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=13
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=14
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=15
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=16
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=17
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=18
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=19
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=20
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=21
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=22
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=23
+  falling-block-water  apic ppc=3  coefPic= threads=32  repeat=24
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=0
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=1
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=2
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=3
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=4
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=5
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=6
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=7
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=8
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=9
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=10
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=11
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=12
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=13
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=14
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=15
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=16
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=17
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=18
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=19
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=20
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=21
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=22
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=23
+  falling-block-water  apic ppc=4  coefPic= threads=32  repeat=24
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=0
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=1
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=2
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=3
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=4
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=5
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=6
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=7
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=8
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=9
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=10
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=11
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=12
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=13
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=14
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=15
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=16
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=17
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=18
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=19
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=20
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=21
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=22
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=23
+  falling-block-water  apic ppc=5  coefPic= threads=32  repeat=24
+[run] falling-block-water_pic_ppc1_t32_r0: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r0.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r0
+[run] falling-block-water_pic_ppc1_t32_r1: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r1.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r1
+[run] falling-block-water_pic_ppc1_t32_r2: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r2.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r2
+[run] falling-block-water_pic_ppc1_t32_r3: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r3.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r3
+[run] falling-block-water_pic_ppc1_t32_r4: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r4.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r4
+[run] falling-block-water_pic_ppc1_t32_r5: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r5.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r5
+[run] falling-block-water_pic_ppc1_t32_r6: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r6.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r6
+[run] falling-block-water_pic_ppc1_t32_r7: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r7.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r7
+[run] falling-block-water_pic_ppc1_t32_r8: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r8.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r8
+[run] falling-block-water_pic_ppc1_t32_r9: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r9.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r9
+[run] falling-block-water_pic_ppc1_t32_r10: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r10.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r10
+[run] falling-block-water_pic_ppc1_t32_r11: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r11.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r11
+[run] falling-block-water_pic_ppc1_t32_r12: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r12.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r12
+[run] falling-block-water_pic_ppc1_t32_r13: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r13.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r13
+[run] falling-block-water_pic_ppc1_t32_r14: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r14.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r14
+[run] falling-block-water_pic_ppc1_t32_r15: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r15.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r15
+[run] falling-block-water_pic_ppc1_t32_r16: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r16.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r16
+[run] falling-block-water_pic_ppc1_t32_r17: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r17.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r17
+[run] falling-block-water_pic_ppc1_t32_r18: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r18.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r18
+[run] falling-block-water_pic_ppc1_t32_r19: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r19.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r19
+[run] falling-block-water_pic_ppc1_t32_r20: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r20.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r20
+[run] falling-block-water_pic_ppc1_t32_r21: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r21.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r21
+[run] falling-block-water_pic_ppc1_t32_r22: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r22.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r22
+[run] falling-block-water_pic_ppc1_t32_r23: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r23.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r23
+[run] falling-block-water_pic_ppc1_t32_r24: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc1_t32_r24.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc1_t32_r24
+[run] falling-block-water_pic_ppc2_t32_r0: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r0.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r0
+[run] falling-block-water_pic_ppc2_t32_r1: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r1.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r1
+[run] falling-block-water_pic_ppc2_t32_r2: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r2.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r2
+[run] falling-block-water_pic_ppc2_t32_r3: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r3.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r3
+[run] falling-block-water_pic_ppc2_t32_r4: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r4.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r4
+[run] falling-block-water_pic_ppc2_t32_r5: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r5.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r5
+[run] falling-block-water_pic_ppc2_t32_r6: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r6.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r6
+[run] falling-block-water_pic_ppc2_t32_r7: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r7.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r7
+[run] falling-block-water_pic_ppc2_t32_r8: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r8.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r8
+[run] falling-block-water_pic_ppc2_t32_r9: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r9.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r9
+[run] falling-block-water_pic_ppc2_t32_r10: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r10.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r10
+[run] falling-block-water_pic_ppc2_t32_r11: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r11.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r11
+[run] falling-block-water_pic_ppc2_t32_r12: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r12.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r12
+[run] falling-block-water_pic_ppc2_t32_r13: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r13.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r13
+[run] falling-block-water_pic_ppc2_t32_r14: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r14.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r14
+[run] falling-block-water_pic_ppc2_t32_r15: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r15.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r15
+[run] falling-block-water_pic_ppc2_t32_r16: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r16.json
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r16
+[run] falling-block-water_pic_ppc2_t32_r17: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r17.json
+[fail] falling-block-water_pic_ppc2_t32_r17 exited with -6
+[checkpoint] CSV files updated after falling-block-water_pic_ppc2_t32_r17
+[run] falling-block-water_pic_ppc2_t32_r18: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-report-release/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_ppc_impact/configs/falling-block-water/falling-block-water_pic_ppc2_t32_r18.json

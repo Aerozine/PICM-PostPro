@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "/home/users/l/d/ldelbarr/PICM/PostPro/solver_iterations.py", line 385, in <module>
+    raise SystemExit(main())
+  File "/home/users/l/d/ldelbarr/PICM/PostPro/solver_iterations.py", line 368, in main
+    summary, rows = run_one(spec, binary, args.keep_raw, args.no_run_logs)
+  File "/home/users/l/d/ldelbarr/PICM/PostPro/solver_iterations.py", line 229, in run_one
+    result = rc.run_process(command, cwd=PICM_ROOT, env=env)
+  File "/home/users/l/d/ldelbarr/PICM/PostPro/report_compare.py", line 119, in run_process
+    universal_newlines=True,
+  File "/usr/lib64/python3.6/subprocess.py", line 423, in run
+    with Popen(*popenargs, **kwargs) as process:
+  File "/usr/lib64/python3.6/subprocess.py", line 729, in __init__
+    restore_signals, start_new_session)
+  File "/usr/lib64/python3.6/subprocess.py", line 1364, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+FileNotFoundError: [Errno 2] No such file or directory: '/home/users/l/d/ldelbarr/PICM/build-solver-debug/bin/PIC': '/home/users/l/d/ldelbarr/PICM/build-solver-debug/bin/PIC'

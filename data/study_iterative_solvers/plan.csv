@@ -1,6 +1,6 @@
 test,method,solver,tolerance,threads,repeat,run,config
-dambreak,pic,jacobi,0.01,32,0,dambreak_jacobi_tol0p01_t32_r0,/home/users/l/d/ldelbarr/package/PICM/results/study_iterative_solvers/configs/dambreak_jacobi_tol0p01_t32_r0.json
-dambreak,pic,gauss_seidel,0.01,32,0,dambreak_gauss_seidel_tol0p01_t32_r0,/home/users/l/d/ldelbarr/package/PICM/results/study_iterative_solvers/configs/dambreak_gauss_seidel_tol0p01_t32_r0.json
-dambreak,pic,red_black_gauss_seidel,0.01,32,0,dambreak_red_black_gauss_seidel_tol0p01_t32_r0,/home/users/l/d/ldelbarr/package/PICM/results/study_iterative_solvers/configs/dambreak_red_black_gauss_seidel_tol0p01_t32_r0.json
-dambreak,pic,miccg0,0.01,32,0,dambreak_miccg0_tol0p01_t32_r0,/home/users/l/d/ldelbarr/package/PICM/results/study_iterative_solvers/configs/dambreak_miccg0_tol0p01_t32_r0.json
-dambreak,pic,cg,0.01,32,0,dambreak_cg_tol0p01_t32_r0,/home/users/l/d/ldelbarr/package/PICM/results/study_iterative_solvers/configs/dambreak_cg_tol0p01_t32_r0.json
+dambreak,pic,jacobi,0.01,32,0,dambreak_jacobi_tol0p01_t32_r0,/home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_jacobi_tol0p01_t32_r0.json
+dambreak,pic,gauss_seidel,0.01,32,0,dambreak_gauss_seidel_tol0p01_t32_r0,/home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_gauss_seidel_tol0p01_t32_r0.json
+dambreak,pic,red_black_gauss_seidel,0.01,32,0,dambreak_red_black_gauss_seidel_tol0p01_t32_r0,/home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_red_black_gauss_seidel_tol0p01_t32_r0.json
+dambreak,pic,miccg0,0.01,32,0,dambreak_miccg0_tol0p01_t32_r0,/home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_miccg0_tol0p01_t32_r0.json
+dambreak,pic,cg,0.01,32,0,dambreak_cg_tol0p01_t32_r0,/home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_cg_tol0p01_t32_r0.json

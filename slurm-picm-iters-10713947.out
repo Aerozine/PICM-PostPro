@@ -1,0 +1,23 @@
+[study] Iterative pressure solvers
+[study] PICM_ROOT:  /home/users/l/d/ldelbarr/PICM
+[study] PostPro:    /home/users/l/d/ldelbarr/PICM/PostPro
+[study] config:     /home/users/l/d/ldelbarr/PICM/test/PIC/dambreak.json
+[study] solvers:    jacobi,gauss_seidel,red_black_gauss_seidel,miccg0,cg
+[study] tolerances: 1e-2
+[study] threads:    32
+[study] repeats:    1
+[study] csv output: /home/users/l/d/ldelbarr/PICM/PostPro/data/study_iterative_solvers
+[study] misc:       /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers
+[study] img:        /home/users/l/d/ldelbarr/PICM/PostPro/img/study_iterative_solvers
+[study] binary:     prebuilt Debug CPU OpenMP
+[plan] wrote /home/users/l/d/ldelbarr/PICM/PostPro/data/study_iterative_solvers/plan.csv
+  dambreak solver=jacobi                   tol=0.01 threads=32 repeat=0
+  dambreak solver=gauss_seidel             tol=0.01 threads=32 repeat=0
+  dambreak solver=red_black_gauss_seidel   tol=0.01 threads=32 repeat=0
+  dambreak solver=miccg0                   tol=0.01 threads=32 repeat=0
+  dambreak solver=cg                       tol=0.01 threads=32 repeat=0
+[run] dambreak_jacobi_tol0p01_t32_r0: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-solver-debug/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_jacobi_tol0p01_t32_r0.json
+[checkpoint] CSV files updated after dambreak_jacobi_tol0p01_t32_r0
+[run] dambreak_gauss_seidel_tol0p01_t32_r0: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-solver-debug/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_gauss_seidel_tol0p01_t32_r0.json
+[checkpoint] CSV files updated after dambreak_gauss_seidel_tol0p01_t32_r0
+[run] dambreak_red_black_gauss_seidel_tol0p01_t32_r0: OMP_NUM_THREADS=32 /home/users/l/d/ldelbarr/PICM/build-solver-debug/bin/PIC /home/users/l/d/ldelbarr/PICM/PostPro/data/misc/study_iterative_solvers/configs/dambreak_red_black_gauss_seidel_tol0p01_t32_r0.json

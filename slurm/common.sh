@@ -37,6 +37,15 @@ picm_slurm_init() {
   export PYTHON_BIN="${PYTHON:-python3}"
   export OMP_PLACES="${OMP_PLACES:-cores}"
   export OMP_DYNAMIC=false
+  # Suppress matplotlib and Python warnings on older Pythons (e.g., 3.6.8)
+  export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::FutureWarning"
+  # Suppress matplotlib and Python warnings on older Pythons (e.g., 3.6.8)
+  export PYTHONWARNINGS="ignore::DeprecationWarning,ignore::FutureWarning"
+  
+  # Disable plot generation in SLURM - plots will be generated locally later
+  # Uncomment next line to skip plotting in SLURM:
+  # export PICM_PLOTS=0
+  
   export MPLBACKEND=Agg
   export PYTHONDONTWRITEBYTECODE=1
   export MPLCONFIGDIR="${MPLCONFIGDIR:-${TMPDIR:-/tmp}/picm_matplotlib_${SLURM_JOB_ID:-local}}"

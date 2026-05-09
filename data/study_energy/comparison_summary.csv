@@ -1,6 +1,6 @@
 test,method,ppc,flip_coef_pic,runs,wall_time_mean_s,wall_time_std_s,final_kinetic_energy_mean,final_kinetic_energy_std,final_normalized_ke_mean,final_normalized_ke_std,max_div_max,final_enstrophy_mean,final_enstrophy_std,final_mean_abs_vorticity_mean,final_mean_abs_vorticity_std,final_max_abs_vorticity_max
-falling-block-water,apic,3,,1,38.639900794951245,0.0,nan,nan,nan,nan,0.573431,,,,,
-falling-block-water,flip,3,0.0,1,97.6275716839591,0.0,nan,nan,nan,nan,0.853024,,,,,
-falling-block-water,flip,3,0.05,1,31.888811822980642,0.0,nan,nan,nan,nan,0.691671,,,,,
-falling-block-water,flip,3,0.1,1,43.95988444297109,0.0,nan,nan,nan,nan,0.35915,,,,,
-falling-block-water,pic,3,,1,26.683299612952396,0.0,nan,nan,nan,nan,0.0497252,,,,,
+falling-block-water,apic,3,,1,42.39712298894301,0.0,nan,nan,nan,nan,0.596085,,,,,
+falling-block-water,flip,3,0.0,1,81.03716219298076,0.0,nan,nan,nan,nan,0.924227,,,,,
+falling-block-water,flip,3,0.05,1,41.63927184708882,0.0,nan,nan,nan,nan,0.471988,,,,,
+falling-block-water,flip,3,0.1,1,42.808319643023424,0.0,nan,nan,nan,nan,0.225053,,,,,
+falling-block-water,pic,3,,1,30.050914802006446,0.0,nan,nan,nan,nan,0.0359178,,,,,
