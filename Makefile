@@ -41,6 +41,8 @@ VIDEO_SAMPLE ?= 1
 VIDEO_WIDTH ?= 1280
 VIDEO_HEIGHT ?= 720
 VIDEO_WORKERS ?= 1
+VIDEO_BACKGROUND ?= white
+VIDEO_FORCE ?= --force
 VIDEO_ARGS ?=
 
 STUDY_SLURM := \
@@ -123,4 +125,6 @@ video: build-release
 		--height "$(VIDEO_HEIGHT)" \
 		--workers "$(VIDEO_WORKERS)" \
 		--cmap "viridis" \
+		--background "$(VIDEO_BACKGROUND)" \
+		$(VIDEO_FORCE) \
 		$(VIDEO_ARGS)

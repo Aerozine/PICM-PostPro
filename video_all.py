@@ -185,6 +185,7 @@ def encode_video(raw_dir: Path, out_path: Path, args: argparse.Namespace, title:
         title=title,
         mode=args.mode,
         n_workers=args.workers,
+        background=args.background,
     )
     return True
 
@@ -221,6 +222,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--cmap", default="viridis")
     parser.add_argument("--mode", choices=("speed", "density"), default="speed")
+    parser.add_argument("--background", choices=("white", "black"), default="white")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--keep-raw", action="store_true")

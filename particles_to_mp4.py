@@ -15,6 +15,8 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Iterable
 
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/picm_matplotlib")
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -61,6 +63,12 @@ except ImportError:  # pragma: no cover - optional dependency
 
 def _cmap(name: str):
     return matplotlib.colormaps[name]
+
+
+def _background_palette(name: str):
+    if name == "black":
+        return (0, 0, 0), "black", "white"
+    return (255, 255, 255), "white", "black"
 
 
 def parse_pvd(pvd_path: Path) -> list[Path]:
@@ -230,8 +238,22 @@ def _scan(paths: Iterable[Path], n_scan: int = 12):
     )
 
 
-def _rasterise(x, y, speed, width, height, xlim, ylim, cmap_name, vmin, vmax, mode):
-    image = np.zeros((height, width, 3), dtype=np.uint8)
+def _rasterise(
+    x,
+    y,
+    speed,
+    width,
+    height,
+    xlim,
+    ylim,
+    cmap_name,
+    vmin,
+    vmax,
+    mode,
+    background_rgb,
+):
+    image = np.empty((height, width, 3), dtype=np.uint8)
+    image[:] = np.asarray(background_rgb, dtype=np.uint8)
     if x is None or len(x) == 0:
         return image.tobytes()
 
@@ -268,23 +290,48 @@ def _rasterise(x, y, speed, width, height, xlim, ylim, cmap_name, vmin, vmax, mo
 
 
 def _worker(args):
-    path, width, height, xlim, ylim, cmap_name, vmin, vmax, mode = args
+    path, width, height, xlim, ylim, cmap_name, vmin, vmax, mode, background_rgb = args
     x, y, speed = _load_vtp(Path(path))
-    return _rasterise(x, y, speed, width, height, xlim, ylim, cmap_name, vmin, vmax, mode)
+    return _rasterise(
+        x,
+        y,
+        speed,
+        width,
+        height,
+        xlim,
+        ylim,
+        cmap_name,
+        vmin,
+        vmax,
+        mode,
+        background_rgb,
+    )
 
 
-def _make_panel(width, panel_height, dpi, title, cmap_name, vmin, vmax, label):
+def _make_panel(
+    width,
+    panel_height,
+    dpi,
+    title,
+    cmap_name,
+    vmin,
+    vmax,
+    label,
+    background_color,
+    foreground_color,
+    background_rgb,
+):
     fig, ax = plt.subplots(figsize=(width / dpi, panel_height / dpi), dpi=dpi)
-    fig.patch.set_facecolor("black")
+    fig.patch.set_facecolor(background_color)
     ax.set_visible(False)
     scalar = plt.cm.ScalarMappable(cmap=_cmap(cmap_name), norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
     scalar.set_array([])
     colorbar = fig.colorbar(scalar, ax=ax, orientation="horizontal", fraction=1.0, pad=0.0, aspect=40)
-    colorbar.set_label(label, color="white", fontsize=8)
-    colorbar.ax.xaxis.set_tick_params(color="white", labelsize=7)
-    plt.setp(colorbar.ax.xaxis.get_ticklabels(), color="white")
-    colorbar.outline.set_edgecolor("white")
-    fig.suptitle(title, color="white", fontsize=9, y=0.98)
+    colorbar.set_label(label, color=foreground_color, fontsize=8)
+    colorbar.ax.xaxis.set_tick_params(color=foreground_color, labelsize=7)
+    plt.setp(colorbar.ax.xaxis.get_ticklabels(), color=foreground_color)
+    colorbar.outline.set_edgecolor(foreground_color)
+    fig.suptitle(title, color=foreground_color, fontsize=9, y=0.98)
     fig.canvas.draw()
     rgba = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
     rgba = rgba.reshape(fig.canvas.get_width_height()[::-1] + (4,))
@@ -296,7 +343,8 @@ def _make_panel(width, panel_height, dpi, title, cmap_name, vmin, vmax, label):
 
             panel = np.array(Image.fromarray(panel).resize((width, panel_height), Image.LANCZOS))
         except ImportError:
-            resized = np.zeros((panel_height, width, 3), np.uint8)
+            resized = np.empty((panel_height, width, 3), np.uint8)
+            resized[:] = np.asarray(background_rgb, dtype=np.uint8)
             h = min(panel_height, panel.shape[0])
             w = min(width, panel.shape[1])
             resized[:h, :w] = panel[:h, :w]
@@ -357,6 +405,7 @@ def build_mp4(
     margin: float = 0.08,
     crf: int = 20,
     preset: str = "fast",
+    background: str = "white",
 ) -> None:
     paths = list(vtp_paths)
     if not paths:
@@ -364,6 +413,7 @@ def build_mp4(
     width += width % 2
     height += height % 2
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    background_rgb, background_color, foreground_color = _background_palette(background)
 
     print("[video] scanning particle frames")
     scanned_xlim, scanned_ylim, scanned_vmin, scanned_vmax = _scan(paths)
@@ -381,16 +431,41 @@ def build_mp4(
     total_height = panel_height + frame_height
     xlim, ylim = _fit_limits(xlim, ylim, width, frame_height, margin)
     label = "Mean particle speed |v|" if mode == "speed" else "log(1 + particles per pixel)"
-    panel = _make_panel(width, panel_height, dpi, title, cmap_name, float(vmin), float(vmax), label)
+    panel = _make_panel(
+        width,
+        panel_height,
+        dpi,
+        title,
+        cmap_name,
+        float(vmin),
+        float(vmax),
+        label,
+        background_color,
+        foreground_color,
+        background_rgb,
+    )
+    frame_background = np.empty((frame_height, width, 3), np.uint8)
+    frame_background[:] = np.asarray(background_rgb, dtype=np.uint8)
     template = np.concatenate(
-        [np.zeros((frame_height, width, 3), np.uint8), panel],
+        [frame_background, panel],
         axis=0,
     )
 
     n_workers = max(1, int(n_workers or os.cpu_count() or 1))
     prefetch = max(1, int(prefetch or n_workers * 2))
     worker_args = [
-        (str(path), width, frame_height, xlim, ylim, cmap_name, float(vmin), float(vmax), mode)
+        (
+            str(path),
+            width,
+            frame_height,
+            xlim,
+            ylim,
+            cmap_name,
+            float(vmin),
+            float(vmax),
+            mode,
+            background_rgb,
+        )
         for path in paths
     ]
     process = _open_ffmpeg(out_path, width, total_height, fps, crf, preset)
@@ -469,6 +544,7 @@ def main() -> int:
     parser.add_argument("--ylim", type=float, nargs=2, metavar=("YMIN", "YMAX"))
     parser.add_argument("--crf", type=int, default=20)
     parser.add_argument("--preset", default="fast")
+    parser.add_argument("--background", choices=("white", "black"), default="white")
     args = parser.parse_args()
 
     if not args.pvd.exists():
@@ -497,6 +573,7 @@ def main() -> int:
         prefetch=args.prefetch,
         crf=args.crf,
         preset=args.preset,
+        background=args.background,
     )
     return 0
 

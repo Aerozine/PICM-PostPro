@@ -74,8 +74,9 @@ make -C PostPro clean
   simulations, extracts CSV data, writes plots, and encodes particle MP4 clips
   with the `viridis` colormap under `video/postpro_run/`.
 - `make video` recursively scans `test/PIC`, `test/FLIP`, and `test/APIC`,
-  runs every JSON with `write_particles: true`, and writes one `viridis` MP4
-  per config under `video/` using the same directory structure.
+  runs every JSON with `write_particles: true`, and writes one white-background
+  `viridis` MP4 per config under `video/` using the same directory structure.
+  Existing MP4 files are regenerated.
 - `make clean` removes PICM build folders, raw simulation fields, image output,
   video output, and Python caches while keeping CSV files under `data/`.
 
