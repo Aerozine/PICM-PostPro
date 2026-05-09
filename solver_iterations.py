@@ -94,6 +94,7 @@ def make_config(base_cfg: dict, spec: SolverSpec, args: argparse.Namespace) -> d
     if args.ppc is not None:
         cfg["ppcx"] = args.ppc
         cfg["ppcy"] = args.ppc
+    cfg["max_cfl"] = args.max_cfl
     cfg["sampling_rate"] = max(1, int(cfg.get("nt", 1)))
     cfg["write_u"] = False
     cfg["write_v"] = False
@@ -396,6 +397,12 @@ def main() -> int:
     parser.add_argument("--nt", type=int)
     parser.add_argument("--ppc", type=int)
     parser.add_argument("--max-iterations", type=int)
+    parser.add_argument(
+        "--max-cfl",
+        type=float,
+        default=float(os.environ.get("PICM_SOLVER_MAX_CFL", "0")),
+        help="0 disables CFL substepping so Iter(t) has one pressure solve per timestep",
+    )
     args = parser.parse_args()
 
     args.out = args.out.resolve()

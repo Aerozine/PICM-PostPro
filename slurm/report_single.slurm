@@ -50,7 +50,7 @@ OUT="${PICM_REPORT_OUT:-$DATA_ROOT/report_comparisons}"
 MISC_OUT="${PICM_REPORT_MISC:-$MISC_ROOT/report_comparisons}"
 IMG_OUT="${PICM_REPORT_IMG:-$IMG_ROOT/report_comparisons}"
 
-EXTRA_ARGS=(--skip-build)
+EXTRA_ARGS=(--skip-build --force)
 [[ "${PICM_KEEP_RAW:-0}" == "1" ]] && EXTRA_ARGS+=(--keep-raw)
 [[ "${PICM_RUN_LOGS:-0}" == "0" ]] && EXTRA_ARGS+=(--no-run-logs)
 [[ "${PICM_PLOTS:-0}" == "0" ]] && EXTRA_ARGS+=(--no-plots)

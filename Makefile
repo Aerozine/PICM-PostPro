@@ -18,6 +18,9 @@ DEBUG_BUILD_DIR ?= $(PICM_ROOT)/build-solver-debug
 BUILD_JOBS ?= 32
 PYTHON ?= python3
 SBATCH ?= sbatch
+CMAKE_ARGS ?=
+EIGEN_ROOT ?=
+CMAKE_COMMON_ARGS := -DUSE_GPU=OFF -DUSE_PARALLEL=ON $(if $(EIGEN_ROOT),-DCMAKE_PREFIX_PATH="$(EIGEN_ROOT)") $(CMAKE_ARGS)
 
 POSTPRO_RUN_TEST ?= falling-block-water
 POSTPRO_RUN_METHODS ?= pic,flip,apic
@@ -60,12 +63,14 @@ clean:
 	find "$(POSTPRO_ROOT)" "$(PICM_ROOT)" -type d -name __pycache__ -prune -exec rm -rf {} +
 
 build-release:
-	cmake -S "$(PICM_ROOT)" -B "$(RELEASE_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DUSE_GPU=OFF -DUSE_PARALLEL=ON
+	cmake -S "$(PICM_ROOT)" -B "$(RELEASE_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release $(CMAKE_COMMON_ARGS)
 	cmake --build "$(RELEASE_BUILD_DIR)" -j"$(BUILD_JOBS)"
+	@test -x "$(RELEASE_BUILD_DIR)/bin/PIC" || { echo "[error] build finished but missing $(RELEASE_BUILD_DIR)/bin/PIC"; exit 1; }
 
 build: build-release
-	cmake -S "$(PICM_ROOT)" -B "$(DEBUG_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Debug -DUSE_GPU=OFF -DUSE_PARALLEL=ON
+	cmake -S "$(PICM_ROOT)" -B "$(DEBUG_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Debug $(CMAKE_COMMON_ARGS)
 	cmake --build "$(DEBUG_BUILD_DIR)" -j"$(BUILD_JOBS)"
+	@test -x "$(DEBUG_BUILD_DIR)/bin/PIC" || { echo "[error] build finished but missing $(DEBUG_BUILD_DIR)/bin/PIC"; exit 1; }
 
 require-build:
 	@test -x "$(RELEASE_BUILD_DIR)/bin/PIC" || { echo "[error] missing $(RELEASE_BUILD_DIR)/bin/PIC; run 'make -C $(POSTPRO_ROOT) build' before sbatch"; exit 1; }

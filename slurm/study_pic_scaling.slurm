@@ -52,7 +52,7 @@ MISC_OUT="${PICM_STUDY_MISC:-$MISC_ROOT/study_pic_scaling}"
 IMG_OUT="${PICM_STUDY_IMG:-$IMG_ROOT/study_pic_scaling}"
 CONFIG="${PICM_SCALING_CONFIG:-$PICM_ROOT/test/PIC/freeFallInWater.json}"
 
-EXTRA_ARGS=(--skip-build)
+EXTRA_ARGS=(--skip-build --force)
 [[ "${PICM_KEEP_RAW:-0}" == "1" ]] && EXTRA_ARGS+=(--keep-raw)
 [[ "${PICM_SCALING_USE_SRUN:-1}" == "1" ]] && EXTRA_ARGS+=(--use-srun)
 [[ "${PICM_SCALING_RUN_LOGS:-0}" == "0" ]] && EXTRA_ARGS+=(--no-run-logs)

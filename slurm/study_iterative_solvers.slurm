@@ -48,7 +48,7 @@ OUT="${PICM_STUDY_OUT:-$DATA_ROOT/study_iterative_solvers}"
 MISC_OUT="${PICM_STUDY_MISC:-$MISC_ROOT/study_iterative_solvers}"
 IMG_OUT="${PICM_STUDY_IMG:-$IMG_ROOT/study_iterative_solvers}"
 
-EXTRA_ARGS=(--skip-build)
+EXTRA_ARGS=(--skip-build --force)
 [[ "${PICM_KEEP_RAW:-0}" == "1" ]] && EXTRA_ARGS+=(--keep-raw)
 [[ "${PICM_RUN_LOGS:-0}" == "0" ]] && EXTRA_ARGS+=(--no-run-logs)
 [[ "${PICM_PLOTS:-0}" == "0" ]] && EXTRA_ARGS+=(--no-plots)

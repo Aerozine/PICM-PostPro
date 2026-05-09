@@ -319,21 +319,14 @@ def plot_scaling(
             any_group = True
             group.sort(key=lambda row: int(row["threads"]))
             threads = [int(row["threads"]) for row in group]
-            speedup = [float(row["speedup"]) for row in group]
-            efficiency = [float(row["efficiency"]) for row in group]
-            ax.plot(threads, speedup, "o-", label=f"{binding} speedup")
-            ax.plot(threads, efficiency, "s-", label=f"{binding} efficiency")
-            if study == "strong":
-                base = min(threads)
-                ax.plot(threads, [t / base for t in threads], "--", color="0.5", label=f"{binding} ideal")
+            wall_time = [float(row["wall_time_s"]) for row in group]
+            ax.plot(threads, wall_time, "o-", label=f"{binding}")
         if not any_group:
             rc.plt.close(fig)
             continue
-        if study == "weak":
-            ax.axhline(1.0, ls="--", color="0.5", label="ideal")
         ax.set_xlabel("OpenMP threads")
-        ax.set_ylabel("Speedup / efficiency")
-        ax.set_title(f"PIC {study} scaling")
+        ax.set_ylabel("Simulation wall time [s]")
+        ax.set_title(f"PIC {study} scaling: simulation time")
         ax.grid(True, alpha=0.3)
         ax.legend()
         fig.tight_layout()
