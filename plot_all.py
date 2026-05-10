@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import free_fall_particles
 import pic_scaling
 import report_compare
 import solver_iterations
@@ -29,7 +30,7 @@ def run_report_dirs(data_root: Path, img_root: Path, image_formats: tuple[str, .
             continue
         report_compare.postprocess_csv(out_dir)
         if make_plots:
-            report_compare.plot_all(out_dir, img_root / name, image_formats)
+            report_compare.plot_all(out_dir, img_root, image_formats)
 
 
 def run_scaling_dirs(data_root: Path, img_root: Path, image_formats: tuple[str, ...], make_plots: bool) -> None:
@@ -39,7 +40,21 @@ def run_scaling_dirs(data_root: Path, img_root: Path, image_formats: tuple[str, 
             continue
         pic_scaling.postprocess_csv(out_dir)
         if make_plots:
-            pic_scaling.plot_scaling(out_dir, img_root / name, image_formats)
+            pic_scaling.plot_scaling(out_dir, img_root / "scaling", image_formats)
+
+
+def run_free_fall(data_root: Path, img_root: Path, image_formats: tuple[str, ...], make_plots: bool) -> None:
+    csv_path = data_root / "study_free_fall_particles" / "particle_velocity.csv"
+    if not csv_path.is_file():
+        return
+    if not make_plots:
+        return
+    rows = free_fall_particles.read_csv(csv_path)
+    if rows:
+        try:
+            free_fall_particles.plot_rows(rows, img_root, image_formats)
+        except Exception as exc:
+            print(f"[warn] free-fall plot failed: {exc}")
 
 
 def run_solver_dirs(data_root: Path, img_root: Path, image_formats: tuple[str, ...], make_plots: bool) -> None:
@@ -48,14 +63,14 @@ def run_solver_dirs(data_root: Path, img_root: Path, image_formats: tuple[str, .
         return
     solver_iterations.postprocess_csv(out_dir)
     if make_plots:
-        solver_iterations.plot_iterations(out_dir, img_root / "study_iterative_solvers", image_formats)
+        solver_iterations.plot_iterations(out_dir, img_root / "iterative", image_formats)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, default=DATA_DIR)
     parser.add_argument("--img", type=Path, default=IMG_DIR)
-    parser.add_argument("--image-formats", default="png,svg,pdf,jpg")
+    parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--postpro-only", action="store_true")
     args = parser.parse_args()
 
@@ -67,6 +82,7 @@ def main() -> int:
     run_report_dirs(data_root, img_root, image_formats, make_plots)
     run_scaling_dirs(data_root, img_root, image_formats, make_plots)
     run_solver_dirs(data_root, img_root, image_formats, make_plots)
+    run_free_fall(data_root, img_root, image_formats, make_plots)
 
     if make_plots:
         print(f"[plot] regenerated plots under {img_root}")

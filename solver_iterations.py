@@ -293,55 +293,10 @@ def optional_float(value):
     return parsed if rc.math.isfinite(parsed) else None
 
 
-def plot_iteration_time_series(
-    iter_rows: List[dict],
-    tolerance: str,
-    plot_dir: Path,
-    image_formats: Tuple[str, ...],
-) -> None:
-    tolerance_rows = [row for row in iter_rows if str(row.get("tolerance")) == str(tolerance)]
-    if not tolerance_rows:
-        return
-
-    grouped = {}
-    has_time = any(row.get("time") not in ("", None) for row in tolerance_rows)
-    x_key = "time" if has_time else "solve"
-    for row in tolerance_rows:
-        x_value = optional_float(row.get(x_key))
-        y_value = optional_float(row.get("pressure_iters"))
-        if x_value is None or y_value is None:
-            continue
-        grouped.setdefault(row["solver"], {}).setdefault(x_value, []).append(y_value)
-    if not grouped:
-        return
-
-    fig, ax = rc.plt.subplots(figsize=(10, 5.5))
-    for solver in sorted(grouped, key=lambda name: CPU_SOLVERS.index(name) if name in CPU_SOLVERS else 99):
-        time_map = grouped[solver]
-        xs = sorted(time_map)
-        ys = [rc.mean(time_map[x]) for x in xs]
-        ax.plot(xs, ys, lw=1.5, label=solver)
-    y_values = [value for time_map in grouped.values() for values in time_map.values() for value in values]
-    if y_values and max(y_values) / max(min(value for value in y_values if value > 0), 1.0) > 50:
-        ax.set_yscale("log")
-    ax.set_xlabel("Time t [s]" if has_time else "Pressure solve index")
-    ax.set_ylabel("Iterations per pressure solve")
-    ax.set_title(f"Dambreak: pressure iterations over time, tolerance={tolerance}")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-    save_figure(
-        fig,
-        plot_dir / f"dambreak_solver_iter_time_tol{rc.slug_float(float(tolerance))}",
-        formats=image_formats,
-    )
-    rc.plt.close(fig)
-
-
 def plot_iterations(
     out_root: Path,
     img_root: Path,
-    image_formats: Tuple[str, ...] = ("png", "svg", "pdf", "jpg"),
+    image_formats: Tuple[str, ...] = ("png", "pdf"),
 ) -> None:
     if rc.plt is None:
         return
@@ -349,29 +304,49 @@ def plot_iterations(
     if not summary_rows:
         return
     iter_rows = read_csv(out_root / "iterations.csv")
-    plot_dir = img_root
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    grouped = {}
-    for row in summary_rows:
-        grouped.setdefault(str(row["tolerance"]), []).append(row)
-    for tolerance, rows in grouped.items():
-        rows.sort(key=solver_sort_key)
-        labels = [row["solver"] for row in rows]
-        values = [float(row["mean_pressure_iters"]) for row in rows]
-        fig, ax = rc.plt.subplots(figsize=(9, 5))
-        ax.bar(range(len(labels)), values)
-        ax.set_xticks(range(len(labels)), labels, rotation=25, ha="right")
-        ax.set_ylabel("Mean iterations per pressure solve")
-        ax.set_title(f"Dambreak: mean pressure iterations, tolerance={tolerance}")
-        ax.grid(axis="y", alpha=0.3)
-        fig.tight_layout()
-        save_figure(
-            fig,
-            plot_dir / f"dambreak_solver_iters_tol{rc.slug_float(float(tolerance))}",
-            formats=image_formats,
-        )
-        rc.plt.close(fig)
-        plot_iteration_time_series(iter_rows, tolerance, plot_dir, image_formats)
+    if not iter_rows:
+        return
+    img_root.mkdir(parents=True, exist_ok=True)
+
+    # Use first (lowest) tolerance; plot iterations per time step for each solver.
+    tolerances = sorted({str(row["tolerance"]) for row in summary_rows})
+    tolerance = tolerances[0]
+
+    has_time = any(row.get("time") not in ("", None) for row in iter_rows)
+    x_key = "time" if has_time else "solve"
+    grouped: dict = {}
+    for row in iter_rows:
+        if str(row.get("tolerance")) != tolerance:
+            continue
+        x_val = optional_float(row.get(x_key))
+        y_val = optional_float(row.get("pressure_iters"))
+        if x_val is None or y_val is None:
+            continue
+        grouped.setdefault(row["solver"], {}).setdefault(x_val, []).append(y_val)
+
+    if not grouped:
+        return
+
+    fig, ax = rc.plt.subplots(figsize=(10, 5))
+    for solver in sorted(grouped, key=lambda n: CPU_SOLVERS.index(n) if n in CPU_SOLVERS else 99):
+        time_map = grouped[solver]
+        xs = sorted(time_map)
+        ys = [rc.mean(time_map[x]) for x in xs]
+        ax.plot(xs, ys, lw=1.5, label=solver)
+
+    all_vals = [v for tm in grouped.values() for vals in tm.values() for v in vals]
+    pos_vals = [v for v in all_vals if v > 0]
+    if pos_vals and max(all_vals) / min(pos_vals) > 50:
+        ax.set_yscale("log")
+
+    ax.set_xlabel("Time $t$ [s]" if has_time else "Pressure solve index")
+    ax.set_ylabel("Iterations per pressure solve")
+    ax.set_title(f"Pressure solver iterations over time (tol={tolerance})")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    save_figure(fig, img_root / "iterative", formats=image_formats)
+    rc.plt.close(fig)
 
 
 def main() -> int:
@@ -384,7 +359,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--misc-dir", type=Path)
     parser.add_argument("--img-dir", type=Path)
-    parser.add_argument("--image-formats", default="png,svg,pdf,jpg")
+    parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--plot-only", action="store_true")
     parser.add_argument("--skip-build", action="store_true")

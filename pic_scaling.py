@@ -326,11 +326,11 @@ def plot_scaling(
             continue
         ax.set_xlabel("OpenMP threads")
         ax.set_ylabel("Simulation wall time [s]")
-        ax.set_title(f"PIC {study} scaling: simulation time")
+        ax.set_title(f"PIC {study} scaling")
         ax.grid(True, alpha=0.3)
         ax.legend()
         fig.tight_layout()
-        save_figure(fig, plot_dir / f"pic_{study}_scaling", formats=image_formats)
+        save_figure(fig, plot_dir / study, formats=image_formats)
         rc.plt.close(fig)
 
 
@@ -344,7 +344,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--misc-dir", type=Path)
     parser.add_argument("--img-dir", type=Path)
-    parser.add_argument("--image-formats", default="png,svg,pdf,jpg")
+    parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--plot-only", action="store_true")
     parser.add_argument("--skip-build", action="store_true")

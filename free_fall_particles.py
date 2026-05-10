@@ -388,7 +388,7 @@ def plot_rows(rows: List[dict], img_dir: Path, image_formats: Iterable[str]) -> 
     ax.legend(handles + residual_handles, labels + residual_labels, ncol=2)
     fig.tight_layout()
     fig.subplots_adjust(right=0.86)
-    out_base = img_dir / "free_fall_no_water_particle_velocity"
+    out_base = img_dir / "velocity" / "velocityL2"
     save_figure(fig, out_base, formats=image_formats)
     plt.close(fig)
     return out_base.with_suffix(".png")
@@ -425,8 +425,8 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--misc-dir", type=Path)
-    parser.add_argument("--img-dir", type=Path)
-    parser.add_argument("--image-formats", default="png,svg,pdf,jpg")
+    parser.add_argument("--img-dir", type=Path, default=IMG_DIR)
+    parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-local-report-release")
     parser.add_argument("--build-jobs", type=int, default=1)
     parser.add_argument("--skip-build", action="store_true")
@@ -439,7 +439,7 @@ def main() -> int:
 
     args.out = args.out.resolve()
     args.misc_dir = (args.misc_dir or default_misc_dir(args.out)).resolve()
-    args.img_dir = (args.img_dir or default_img_dir(args.out)).resolve()
+    args.img_dir = args.img_dir.resolve()
     image_formats = parse_formats(args.image_formats)
     if args.plot_only:
         rows = read_csv(args.out / "particle_velocity.csv")

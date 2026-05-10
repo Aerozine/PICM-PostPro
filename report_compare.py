@@ -104,11 +104,17 @@ REPORT_TESTS = {
 
 REPORT_METHODS = ("pic", "flip", "apic")
 VIDEO_METHODS = ("pic", "flip", "apic", "mixed")
+DEFAULT_FLIP_COEF_PIC = "0,0.01,0.05,0.1"
 METHOD_COLORS = {
     "pic": "#1f77b4",
     "flip": "#ff7f0e",
     "apic": "#2ca02c",
     "mixed": "#9467bd",
+}
+MIXED_FLIP_COLORS = {
+    0.01: "#9467bd",
+    0.05: "#d62728",
+    0.1: "#8c564b",
 }
 METHOD_ORDER = {"pic": 0, "flip": 1, "apic": 2, "mixed": 3}
 
@@ -940,6 +946,123 @@ def run_one(
     return summary, kinetic_rows, div_rows, vorticity_rows
 
 
+def read_run_logs(spec: RunSpec) -> str:
+    chunks = []
+    for name in ("stdout.log", "stderr.log"):
+        path = spec.run_dir / name
+        if path.exists():
+            try:
+                chunks.append(path.read_text(errors="replace"))
+            except Exception as exc:
+                chunks.append(f"[warn] could not read {path}: {exc}")
+    return "\n".join(chunks)
+
+
+def extract_one_from_raw(
+    spec: RunSpec,
+    analysis: str,
+    existing_summary: dict,
+    write_images: bool,
+    img_root: Path,
+    image_formats: Iterable[str],
+) -> Tuple[dict, List[dict], List[dict], List[dict]]:
+    cfg = load_config(spec.config_path)
+    kinetic_rows = []
+    div_rows = []
+    vorticity_rows = []
+    extraction_errors = []
+
+    if not spec.raw_dir.exists():
+        extraction_errors.append(f"missing raw directory: {spec.raw_dir}")
+    else:
+        try:
+            kinetic_rows = extract_kinetic_energy(spec, cfg)
+        except Exception as exc:
+            extraction_errors.append(f"kinetic energy: {exc}")
+            print(f"[warn] {spec.name}: could not extract kinetic energy: {exc}")
+        if analysis in ("vorticity", "ppc"):
+            try:
+                vorticity_rows, vorticity_frames = extract_vorticity(spec, cfg)
+                if write_images:
+                    save_vorticity_images(spec, vorticity_frames, img_root, image_formats)
+            except Exception as exc:
+                extraction_errors.append(f"vorticity: {exc}")
+                print(f"[warn] {spec.name}: could not extract vorticity: {exc}")
+        combined_logs = read_run_logs(spec)
+        div_rows = parse_max_div(spec, combined_logs, cfg)
+    done_time = parse_done_time(combined_logs) if spec.raw_dir.exists() else None
+    wall_time_s = existing_summary.get("wall_time_s", "")
+    parsed_wall_time = optional_float(wall_time_s)
+    if (wall_time_s in ("", None) or parsed_wall_time == 0.0) and done_time is not None:
+        wall_time_s = done_time
+    if wall_time_s in ("", None):
+        wall_time_s = 0.0
+
+    summary = merge_row(
+        base_row(spec),
+        {
+            "status": "ok" if not extraction_errors else "failed",
+            "returncode": existing_summary.get("returncode", 0),
+            "wall_time_s": wall_time_s,
+            "reported_time_s": existing_summary.get("reported_time_s", "")
+            or (done_time if done_time is not None else ""),
+            "final_kinetic_energy": kinetic_rows[-1]["kinetic_energy"] if kinetic_rows else "",
+            "final_normalized_ke": kinetic_rows[-1]["normalized_ke"] if kinetic_rows else "",
+            "final_velocity_l2": kinetic_rows[-1]["velocity_l2"] if kinetic_rows else "",
+            "final_normalized_velocity_l2": kinetic_rows[-1]["normalized_velocity_l2"]
+            if kinetic_rows
+            else "",
+            "final_enstrophy": vorticity_rows[-1]["enstrophy"] if vorticity_rows else "",
+            "final_vorticity_l2": vorticity_rows[-1]["vorticity_l2"] if vorticity_rows else "",
+            "final_mean_abs_vorticity": vorticity_rows[-1]["mean_abs_vorticity"]
+            if vorticity_rows
+            else "",
+            "final_max_abs_vorticity": vorticity_rows[-1]["max_abs_vorticity"]
+            if vorticity_rows
+            else "",
+            "max_div": max((row["max_div"] for row in div_rows), default=""),
+            "config": str(spec.config_path),
+            "error": "; ".join(extraction_errors),
+        },
+    )
+    if extraction_errors:
+        print(f"[fail] {spec.name}: required analysis extraction failed")
+    return summary, kinetic_rows, div_rows, vorticity_rows
+
+
+def extract_from_raw(
+    specs: List[RunSpec],
+    args: argparse.Namespace,
+) -> int:
+    existing = {row.get("run"): row for row in read_csv(args.out / "summary.csv")}
+    summary_rows = []
+    ke_rows = []
+    div_rows = []
+    vorticity_rows = []
+    failures = 0
+    for spec in specs:
+        summary, ke, div, vort = extract_one_from_raw(
+            spec,
+            args.analysis,
+            existing.get(spec.name, {}),
+            not args.no_plots,
+            args.img_dir,
+            args.image_formats,
+        )
+        summary_rows.append(summary)
+        ke_rows.extend(ke)
+        div_rows.extend(div)
+        vorticity_rows.extend(vort)
+        if summary["status"] != "ok":
+            failures += 1
+    checkpoint(args.out, summary_rows, ke_rows, div_rows, vorticity_rows)
+    save_comparison_summary(summary_rows, args.out)
+    if not args.no_plots:
+        plot_all(args.out, args.img_dir, args.image_formats)
+    print(f"[extract] rebuilt CSV files from raw data under {args.out}")
+    return 1 if failures else 0
+
+
 def write_csv(path: Path, rows: List[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
@@ -1198,7 +1321,7 @@ def label_for(row: dict, *, include_ppc: bool = True) -> str:
     elif kind == "flip":
         label = "FLIP"
     elif kind == "mixed":
-        label = f"Mixed PIC-FLIP {display_float(row.get('flip_coef_pic'))}"
+        label = f"FLIP {display_float(row.get('flip_coef_pic'))}"
     else:
         label = str(method).upper()
     if include_ppc and row.get("ppc") not in ("", None):
@@ -1217,7 +1340,10 @@ def method_color(row: dict):
     kind = method_kind(row)
     if kind == "mixed":
         coef = optional_float(row.get("flip_coef_pic"), 0.0) or 0.0
-        return "#9467bd" if coef <= 0.05 else "#8c564b"
+        for target, color in MIXED_FLIP_COLORS.items():
+            if abs(coef - target) < 1e-12:
+                return color
+        return METHOD_COLORS["mixed"]
     return METHOD_COLORS.get(kind)
 
 
@@ -1389,74 +1515,44 @@ def plot_method_metric_for_ppc(
     return True
 
 
-def plot_pic_ppc_energy(
+def _ppc_errbar(
     test: str,
     summary_rows: List[dict],
-    ke_rows: List[dict],
-    plot_dir: Path,
+    final_key: str,
+    y_label: str,
+    title: str,
+    out_stem: Path,
     image_formats: Iterable[str],
 ) -> None:
-    pic_ke_rows = [
-        row for row in ke_rows if row.get("test") == test and row.get("method") == "pic"
-    ]
-    ppcs = sorted({int(float(row["ppc"])) for row in pic_ke_rows if row.get("ppc") not in ("", None)})
-    if len(ppcs) <= 1:
-        return
-
-    cmap = plt.get_cmap("viridis")
-    ppc_min, ppc_max = min(ppcs), max(ppcs)
-
-    def ppc_color(row: dict):
-        ppc = int(float(row.get("ppc", 0) or 0))
-        if ppc_max == ppc_min:
-            return cmap(0.5)
-        return cmap((ppc - ppc_min) / (ppc_max - ppc_min))
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-    plot_metric_series(
-        ax,
-        pic_ke_rows,
-        "velocity_l2",
-        "Velocity L2 norm ||u||_2",
-        f"{test}: PIC velocity L2 norm ||u||_2(t) by particles per cell",
-        "No PIC velocity L2 rows",
-        key_func=lambda row: (int(float(row["ppc"])),),
-        label_func=lambda row: f"ppc={int(float(row['ppc']))}",
-        color_func=ppc_color,
-        legend_columns=3 if len(ppcs) > 12 else 2,
-    )
-    fig.tight_layout()
-    save_figure(fig, plot_dir / f"{test}_pic_ppc_velocity_l2_time", formats=image_formats)
-    plt.close(fig)
-
-    final_groups: Dict[int, List[float]] = {}
+    """Bar chart of a final scalar metric vs PPC, with std errorbars."""
+    groups: Dict[int, List[float]] = {}
     for row in summary_rows:
         if row.get("test") != test or row.get("method") != "pic" or row.get("status") != "ok":
             continue
-        value = optional_float(row.get("final_velocity_l2"))
+        value = optional_float(row.get(final_key))
         if value is None:
             continue
-        final_groups.setdefault(int(float(row["ppc"])), []).append(value)
-    if not final_groups:
+        groups.setdefault(int(float(row["ppc"])), []).append(value)
+    if not groups:
         return
-    xs = sorted(final_groups)
-    ys = [mean(final_groups[ppc]) for ppc in xs]
-    yerr = [std(final_groups[ppc]) for ppc in xs]
-    fig, ax = plt.subplots(figsize=(9, 5))
+    xs = sorted(groups)
+    ys = [mean(groups[ppc]) for ppc in xs]
+    yerr = [std(groups[ppc]) for ppc in xs]
+    fig, ax = plt.subplots(figsize=(8, 5))
     ax.errorbar(xs, ys, yerr=yerr, fmt="o-", capsize=4, color="#1f77b4")
-    ax.set_xlabel("Particles per cell per direction ppcx = ppcy")
-    ax.set_ylabel("Final velocity L2 norm ||u||_2")
-    ax.set_title(f"{test}: final PIC velocity L2 norm versus ppc")
+    ax.set_xlabel("Particles per cell (ppcx = ppcy)")
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    save_figure(fig, plot_dir / f"{test}_pic_ppc_final_velocity_l2", formats=image_formats)
+    save_figure(fig, out_stem, formats=image_formats)
     plt.close(fig)
 
 
 def plot_all(
     out_root: Path,
     img_root: Path,
-    image_formats: Iterable[str] = ("png", "svg", "pdf", "jpg"),
+    image_formats: Iterable[str] = ("png", "pdf"),
 ) -> None:
     if plt is None:
         print("[plot] matplotlib not available; skipping plots")
@@ -1466,79 +1562,47 @@ def plot_all(
     summary_rows = [row for row in read_csv(out_root / "summary.csv") if row.get("status") == "ok"]
     ke_rows = read_csv(out_root / "kinetic_energy.csv")
     vorticity_rows = read_csv(out_root / "vorticity.csv")
-    div_rows = read_csv(out_root / "max_div.csv")
     if not summary_rows:
         return
-    if div_rows and not ke_rows and not vorticity_rows:
-        print(
-            f"[plot] {out_root}: max_div.csv has rows, but kinetic_energy.csv "
-            "and vorticity.csv are empty; skipping max-div-only plots"
-        )
-    plot_dir = img_root
-    plot_dir.mkdir(parents=True, exist_ok=True)
 
     for test in sorted({row["test"] for row in summary_rows}):
         test_summary = [row for row in summary_rows if row["test"] == test]
-        groups = {}
-        for row in test_summary:
-            key = (row["method"], row["ppc"], row.get("flip_coef_pic", ""))
-            groups.setdefault(key, []).append(row)
+        ppcs = sorted({row["ppc"] for row in test_summary}, key=lambda v: int(v))
 
-        labels = []
-        wall = []
-        final_velocity_l2 = []
-        for _key, group in sorted(groups.items(), key=lambda item: method_sort_key(item[1][0])):
-            labels.append(label_for(group[0], include_ppc=True))
-            wall.append(mean([float(row["wall_time_s"]) for row in group]))
-            velocity_l2_values = finite_values(group, "final_normalized_velocity_l2")
-            final_velocity_l2.append(mean(velocity_l2_values))
-
-        fig, ax = plt.subplots(figsize=(max(8, 0.5 * len(labels)), 5))
-        ax.bar(range(len(labels)), wall)
-        ax.set_xticks(range(len(labels)), labels, rotation=35, ha="right")
-        ax.set_ylabel("Wall time [s]")
-        ax.set_title(f"{test}: runtime")
-        ax.grid(axis="y", alpha=0.3)
-        fig.tight_layout()
-        save_figure(fig, plot_dir / f"{test}_runtime", formats=image_formats)
-        plt.close(fig)
-
-        if any(math.isfinite(value) for value in final_velocity_l2):
-            fig, ax = plt.subplots(figsize=(max(8, 0.5 * len(labels)), 5))
-            ax.bar(range(len(labels)), final_velocity_l2)
-            ax.set_xticks(range(len(labels)), labels, rotation=35, ha="right")
-            ax.set_ylabel("Final velocity L2 norm ratio")
-            ax.set_title(f"{test}: final ||u||_2 / reference ||u||_2")
-            ax.grid(axis="y", alpha=0.3)
-            fig.tight_layout()
-            save_figure(fig, plot_dir / f"{test}_final_velocity_l2", formats=image_formats)
-            plt.close(fig)
-
-        for ppc in sorted({row["ppc"] for row in test_summary}, key=lambda value: int(value)):
+        for ppc in ppcs:
             plot_method_metric_for_ppc(
-                test,
-                ppc,
-                ke_rows,
-                "velocity_l2",
-                "Velocity L2 norm ||u||_2",
-                f"{test}: velocity L2 norm ||u||_2(t), ppc={ppc}",
-                f"{test}_velocity_l2_time_ppc{ppc}",
-                plot_dir,
+                test, ppc, ke_rows,
+                "kinetic_energy", "Kinetic energy $E_k$",
+                f"{test}: kinetic energy, ppc={ppc}",
+                "energyL2",
+                img_root / "energy",
                 image_formats,
             )
             plot_method_metric_for_ppc(
-                test,
-                ppc,
-                vorticity_rows,
-                "vorticity_l2",
-                "Vorticity L2 norm ||omega||_2",
-                f"{test}: vorticity L2 norm ||omega||_2(t), ppc={ppc}",
-                f"{test}_vorticity_l2_time_ppc{ppc}",
-                plot_dir,
+                test, ppc, vorticity_rows,
+                "vorticity_l2", r"Vorticity $\|\omega\|_2$",
+                f"{test}: vorticity $L^2$ norm, ppc={ppc}",
+                "vorticityL2",
+                img_root / "vorticity",
                 image_formats,
             )
-        plot_pic_ppc_energy(test, summary_rows, ke_rows, plot_dir, image_formats)
-    print(f"[plot] wrote plots under {plot_dir}")
+
+        _ppc_errbar(
+            test, summary_rows,
+            "final_kinetic_energy", "Final kinetic energy $E_k$",
+            f"{test}: PIC kinetic energy vs PPC",
+            img_root / "ppc" / "ppc_energyL2",
+            image_formats,
+        )
+        _ppc_errbar(
+            test, summary_rows,
+            "final_vorticity_l2", r"Final vorticity $\|\omega\|_2$",
+            f"{test}: PIC vorticity $L^2$ vs PPC",
+            img_root / "ppc" / "ppc_vorticityL2",
+            image_formats,
+        )
+
+    print(f"[plot] wrote plots under {img_root}")
 
 
 def print_report_tests(tests: Iterable[str]) -> None:
@@ -1562,7 +1626,7 @@ def main() -> int:
     parser.add_argument("--ppc", default="3", help="comma list for ppcx=ppcy")
     parser.add_argument(
         "--flip-coef-pic",
-        default="0.05",
+        default=DEFAULT_FLIP_COEF_PIC,
         help="comma list for FLIP PIC blending coefficient",
     )
     parser.add_argument("--threads", default=os.environ.get("THREADS"))
@@ -1570,7 +1634,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--misc-dir", type=Path)
     parser.add_argument("--img-dir", type=Path)
-    parser.add_argument("--image-formats", default="png,svg,pdf,jpg")
+    parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-report-release")
@@ -1581,6 +1645,11 @@ def main() -> int:
     )
     parser.add_argument("--keep-raw", action="store_true")
     parser.add_argument("--plot-only", action="store_true")
+    parser.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="rebuild CSV metrics and plots from existing raw output without running PICM",
+    )
     parser.add_argument("--no-plots", action="store_true")
     parser.add_argument("--no-run-logs", action="store_true")
     parser.add_argument("--force", action="store_true")
@@ -1647,6 +1716,9 @@ def main() -> int:
     if args.dry_run:
         print("[dry-run] configs generated; no build and no simulation launched")
         return 0
+
+    if args.extract_only:
+        return extract_from_raw(specs, args)
 
     binary = build_binary(args.skip_build, args.build_jobs, args.build_dir)
     video_options = VideoOptions(

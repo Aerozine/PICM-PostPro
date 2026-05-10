@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Iterable, Optional, Tuple, Union
 
 
-DEFAULT_FORMATS = ("png", "svg", "pdf", "jpg")
+DEFAULT_FORMATS = ("png", "pdf")
 
 
 def parse_formats(value: Optional[Union[str, Iterable[str]]]) -> Tuple[str, ...]:

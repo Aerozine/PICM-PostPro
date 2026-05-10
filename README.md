@@ -104,7 +104,7 @@ Common overrides:
 ```bash
 PICM_REPORT_TEST=dambreak make sbatch
 PICM_PPC_VALUES=0,1,2,3,4,5 sbatch slurm/study_ppc_impact.slurm
-PICM_FLIP_COEF_PIC=0,0.02,0.05,0.1 sbatch slurm/study_vorticity.slurm
+PICM_FLIP_COEF_PIC=0,0.01,0.05,0.1 sbatch slurm/study_vorticity.slurm
 PICM_SCALING_THREADS=1,2,4,8,16,32,64 sbatch slurm/study_pic_scaling.slurm
 PICM_SOLVER_TOLERANCES=1e-1,1e-2,1e-3 sbatch slurm/study_iterative_solvers.slurm
 ```
