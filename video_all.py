@@ -186,6 +186,9 @@ def encode_video(raw_dir: Path, out_path: Path, args: argparse.Namespace, title:
         mode=args.mode,
         n_workers=args.workers,
         background=args.background,
+        encoder=args.encoder,
+        crf=args.crf,
+        preset=args.preset,
     )
     return True
 
@@ -222,6 +225,18 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--cmap", default="viridis")
     parser.add_argument("--mode", choices=("speed", "density"), default="speed")
+    parser.add_argument(
+        "--encoder",
+        default="auto",
+        help="ffmpeg encoder policy: auto, hardware, software, libx265, or libx264",
+    )
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=24,
+        help="constant-quality value; lower is higher quality and larger files",
+    )
+    parser.add_argument("--preset", default="veryslow")
     parser.add_argument("--background", choices=("white", "black"), default="white")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

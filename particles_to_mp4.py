@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import struct
 import subprocess
-import sys
+import tempfile
 import zlib
 import xml.etree.ElementTree as ET
 from collections import deque
 from concurrent.futures import Future, ProcessPoolExecutor
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
@@ -79,6 +82,312 @@ def parse_pvd(pvd_path: Path) -> list[Path]:
         for dataset in tree.getroot().iter("DataSet")
         if dataset.get("file")
     ]
+
+
+@dataclass(frozen=True)
+class _EncoderCandidate:
+    label: str
+    codec: str
+    global_args: tuple[str, ...]
+    output_args: tuple[str, ...]
+
+
+def _ffmpeg_binary() -> str:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg not found in PATH")
+    return ffmpeg
+
+
+@lru_cache(maxsize=1)
+def _ffmpeg_encoders() -> frozenset[str]:
+    result = subprocess.run(
+        [_ffmpeg_binary(), "-hide_banner", "-encoders"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "could not list ffmpeg encoders")
+    names = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].startswith("V"):
+            names.add(parts[1])
+    return frozenset(names)
+
+
+def _vaapi_global_args() -> tuple[str, ...]:
+    device = os.environ.get("PICM_FFMPEG_VAAPI_DEVICE")
+    if device:
+        return ("-vaapi_device", device)
+    dri = Path("/dev/dri")
+    if dri.is_dir():
+        render_nodes = sorted(dri.glob("renderD*"))
+        if render_nodes:
+            return ("-vaapi_device", str(render_nodes[0]))
+    return ()
+
+
+def _software_candidates(crf: int, preset: str) -> list[_EncoderCandidate]:
+    return [
+        _EncoderCandidate(
+            "software HEVC",
+            "libx265",
+            (),
+            (
+                "-vcodec",
+                "libx265",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-pix_fmt",
+                "yuv420p",
+                "-tag:v",
+                "hvc1",
+                "-x265-params",
+                "log-level=error",
+            ),
+        ),
+        _EncoderCandidate(
+            "software H.264",
+            "libx264",
+            (),
+            (
+                "-vcodec",
+                "libx264",
+                "-preset",
+                preset,
+                "-crf",
+                str(crf),
+                "-pix_fmt",
+                "yuv420p",
+            ),
+        ),
+    ]
+
+
+def _hardware_candidates(quality: int) -> list[_EncoderCandidate]:
+    candidates = [
+        _EncoderCandidate(
+            "hardware HEVC",
+            "hevc_nvenc",
+            (),
+            (
+                "-vcodec",
+                "hevc_nvenc",
+                "-cq",
+                str(quality),
+                "-b:v",
+                "0",
+                "-pix_fmt",
+                "yuv420p",
+                "-tag:v",
+                "hvc1",
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware HEVC",
+            "hevc_qsv",
+            (),
+            (
+                "-vcodec",
+                "hevc_qsv",
+                "-global_quality",
+                str(quality),
+                "-tag:v",
+                "hvc1",
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware HEVC",
+            "hevc_videotoolbox",
+            (),
+            (
+                "-vcodec",
+                "hevc_videotoolbox",
+                "-q:v",
+                str(quality),
+                "-tag:v",
+                "hvc1",
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware H.264",
+            "h264_nvenc",
+            (),
+            (
+                "-vcodec",
+                "h264_nvenc",
+                "-cq",
+                str(quality),
+                "-b:v",
+                "0",
+                "-pix_fmt",
+                "yuv420p",
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware H.264",
+            "h264_qsv",
+            (),
+            (
+                "-vcodec",
+                "h264_qsv",
+                "-global_quality",
+                str(quality),
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware H.264",
+            "h264_videotoolbox",
+            (),
+            (
+                "-vcodec",
+                "h264_videotoolbox",
+                "-q:v",
+                str(quality),
+            ),
+        ),
+    ]
+    vaapi_args = _vaapi_global_args()
+    if vaapi_args:
+        candidates[2:2] = [
+            _EncoderCandidate(
+                "hardware HEVC",
+                "hevc_vaapi",
+                vaapi_args,
+                (
+                    "-vf",
+                    "format=nv12,hwupload",
+                    "-vcodec",
+                    "hevc_vaapi",
+                    "-qp",
+                    str(quality),
+                    "-tag:v",
+                    "hvc1",
+                ),
+            ),
+            _EncoderCandidate(
+                "hardware H.264",
+                "h264_vaapi",
+                vaapi_args,
+                (
+                    "-vf",
+                    "format=nv12,hwupload",
+                    "-vcodec",
+                    "h264_vaapi",
+                    "-qp",
+                    str(quality),
+                ),
+            ),
+        ]
+    return candidates
+
+
+def _normalise_encoder_name(encoder: str) -> str:
+    return encoder.strip().lower().replace("_", "-")
+
+
+def _encoder_candidates(encoder: str, quality: int, preset: str) -> list[_EncoderCandidate]:
+    encoder = _normalise_encoder_name(encoder)
+    hardware = _hardware_candidates(quality)
+    software = _software_candidates(quality, preset)
+    by_codec = {candidate.codec.replace("_", "-"): candidate for candidate in hardware + software}
+
+    if encoder == "auto":
+        return hardware + software
+    if encoder in {"hardware", "hw"}:
+        return hardware
+    if encoder in {"software", "cpu"}:
+        return software
+    if encoder in {"hevc", "h265", "x265"}:
+        return [software[0]]
+    if encoder in {"h264", "x264"}:
+        return [software[1]]
+    if encoder in by_codec:
+        return [by_codec[encoder]]
+    raise ValueError(
+        "unknown encoder "
+        f"'{encoder}', expected auto, hardware, software, libx265, or libx264"
+    )
+
+
+def _ffmpeg_command(
+    out_path: Path,
+    width: int,
+    height: int,
+    fps: int,
+    candidate: _EncoderCandidate,
+    *,
+    extra_output_args: tuple[str, ...] = (),
+) -> list[str]:
+    return [
+        _ffmpeg_binary(),
+        "-y",
+        *candidate.global_args,
+        "-f",
+        "rawvideo",
+        "-vcodec",
+        "rawvideo",
+        "-s",
+        f"{width}x{height}",
+        "-pix_fmt",
+        "rgb24",
+        "-framerate",
+        str(fps),
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:",
+        *candidate.output_args,
+        *extra_output_args,
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+
+
+@lru_cache(maxsize=None)
+def _probe_encoder(candidate: _EncoderCandidate) -> bool:
+    if candidate.codec not in _ffmpeg_encoders():
+        return False
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as handle:
+        probe_path = Path(handle.name)
+    try:
+        result = subprocess.run(
+            _ffmpeg_command(
+                probe_path,
+                16,
+                16,
+                1,
+                candidate,
+                extra_output_args=("-frames:v", "1"),
+            ),
+            input=bytes(16 * 16 * 3),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        return result.returncode == 0 and probe_path.stat().st_size > 0
+    finally:
+        try:
+            probe_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _select_encoder(encoder: str, quality: int, preset: str) -> _EncoderCandidate:
+    candidates = _encoder_candidates(encoder, quality, preset)
+    tried = []
+    for candidate in candidates:
+        tried.append(candidate.codec)
+        if _probe_encoder(candidate):
+            print(f"[video] ffmpeg encoder: {candidate.label} ({candidate.codec})")
+            return candidate
+    raise RuntimeError(f"no working ffmpeg encoder found; tried: {', '.join(tried)}")
 
 
 def _extract_xml(raw: bytes) -> bytes:
@@ -352,35 +661,18 @@ def _make_panel(
     return panel
 
 
-def _open_ffmpeg(out_path: Path, width: int, height: int, fps: int, crf: int, preset: str):
+def _open_ffmpeg(
+    out_path: Path,
+    width: int,
+    height: int,
+    fps: int,
+    encoder: str,
+    quality: int,
+    preset: str,
+):
+    candidate = _select_encoder(encoder, quality, preset)
     return subprocess.Popen(
-        [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "rawvideo",
-            "-vcodec",
-            "rawvideo",
-            "-s",
-            f"{width}x{height}",
-            "-pix_fmt",
-            "rgb24",
-            "-framerate",
-            str(fps),
-            "-loglevel",
-            "error",
-            "-i",
-            "pipe:",
-            "-vcodec",
-            "libx264",
-            "-preset",
-            preset,
-            "-crf",
-            str(crf),
-            "-pix_fmt",
-            "yuv420p",
-            str(out_path),
-        ],
+        _ffmpeg_command(out_path, width, height, fps, candidate),
         stdin=subprocess.PIPE,
     )
 
@@ -403,8 +695,9 @@ def build_mp4(
     n_workers: int | None = None,
     prefetch: int | None = None,
     margin: float = 0.08,
-    crf: int = 20,
-    preset: str = "fast",
+    encoder: str = "auto",
+    crf: int = 24,
+    preset: str = "veryslow",
     background: str = "white",
 ) -> None:
     paths = list(vtp_paths)
@@ -468,7 +761,7 @@ def build_mp4(
         )
         for path in paths
     ]
-    process = _open_ffmpeg(out_path, width, total_height, fps, crf, preset)
+    process = _open_ffmpeg(out_path, width, total_height, fps, encoder, crf, preset)
     if process.stdin is None:
         raise RuntimeError("ffmpeg stdin is not available")
 
@@ -542,8 +835,18 @@ def main() -> int:
     parser.add_argument("--sample", type=int, default=1)
     parser.add_argument("--xlim", type=float, nargs=2, metavar=("XMIN", "XMAX"))
     parser.add_argument("--ylim", type=float, nargs=2, metavar=("YMIN", "YMAX"))
-    parser.add_argument("--crf", type=int, default=20)
-    parser.add_argument("--preset", default="fast")
+    parser.add_argument(
+        "--encoder",
+        default="auto",
+        help="ffmpeg encoder policy: auto, hardware, software, libx265, or libx264",
+    )
+    parser.add_argument(
+        "--crf",
+        type=int,
+        default=24,
+        help="constant-quality value; lower is higher quality and larger files",
+    )
+    parser.add_argument("--preset", default="veryslow")
     parser.add_argument("--background", choices=("white", "black"), default="white")
     args = parser.parse_args()
 
@@ -571,6 +874,7 @@ def main() -> int:
         ylim=tuple(args.ylim) if args.ylim else None,
         n_workers=args.workers,
         prefetch=args.prefetch,
+        encoder=args.encoder,
         crf=args.crf,
         preset=args.preset,
         background=args.background,

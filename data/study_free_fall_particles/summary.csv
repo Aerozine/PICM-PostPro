@@ -1,0 +1,2 @@
+method,ppc,flip_coef_pic,run,status,returncode,wall_time_s,frames,final_time,final_v_theory,final_v_mean,final_v_median,final_v_p05,final_v_p95,config
+pic,3,,free-fall-no-water_pic_ppc3_t1,ok,0,8.93451262599956,61,3.0,3.0099999997764826,3.0099978568273493,3.009997844696045,3.0099971294403076,3.0099985599517822,/home/lpd/cours/master/pi/PICM/PostPro/data/misc/study_free_fall_particles/configs/free-fall-no-water_pic_ppc3_t1.json

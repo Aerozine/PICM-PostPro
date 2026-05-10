@@ -52,29 +52,52 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 SCRIPT_DIR = SCRIPTS_DIR
 DEFAULT_OUT = DATA_DIR / "report_comparisons"
 
+
+def first_existing_path(*paths: Path) -> Path:
+    for path in paths:
+        if path.exists():
+            return path
+    return paths[0]
+
+
 REPORT_TESTS = {
     "falling-block-water": {
-        "config": PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
+        "config": first_existing_path(
+            PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
+            PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
+        ),
         "reason": "falling block in water; useful for vorticity and energy conservation",
     },
     "freeFallInWater": {
-        "config": PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
+        "config": first_existing_path(
+            PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
+            PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
+        ),
         "reason": "falling block in water; useful for vorticity and energy conservation",
     },
     "von-karman": {
-        "config": PICM_ROOT / "test" / "PIC" / "von-karman.json",
+        "config": first_existing_path(
+            PICM_ROOT / "test" / "PIC" / "von-karman.json",
+            PICM_ROOT / "test" / "PIC" / "section-5-5-1" / "von-karman.json",
+        ),
         "reason": "wake dynamics behind an obstacle; exposes numerical diffusion",
     },
     "dambreak": {
-        "config": PICM_ROOT / "test" / "PIC" / "dambreak.json",
+        "config": first_existing_path(
+            PICM_ROOT / "test" / "PIC" / "dambreak.json",
+            PICM_ROOT / "test" / "PIC" / "extra" / "dambreak.json",
+        ),
         "reason": "free-surface collapse; exposes interface stability",
     },
     "vases-communicants": {
-        "config": PICM_ROOT
-        / "test"
-        / "PIC"
-        / "vases-communicants"
-        / "vases-communicants.json",
+        "config": first_existing_path(
+            PICM_ROOT
+            / "test"
+            / "PIC"
+            / "vases-communicants"
+            / "vases-communicants.json",
+            PICM_ROOT / "test" / "PIC" / "section-5-5-3" / "vases-communicants.json",
+        ),
         "reason": "hydrostatic balancing; exposes damping and long-time stability",
     },
 }
@@ -223,6 +246,17 @@ def scheduler_threads() -> int:
     return max(1, os.cpu_count() or 1)
 
 
+def default_run_threads() -> int:
+    for name in ("SLURM_CPUS_PER_TASK", "PBS_NP", "NSLOTS"):
+        value = os.environ.get(name)
+        if value:
+            try:
+                return max(1, int(value))
+            except ValueError:
+                pass
+    return 1
+
+
 def slug_float(value: float) -> str:
     return f"{value:g}".replace("-", "m").replace(".", "p")
 
@@ -298,15 +332,16 @@ def load_config(path: Path) -> dict:
 def disable_heavy_outputs(
     cfg: dict,
     *,
-    need_velocity_fields: bool = False,
+    need_vorticity_field: bool = False,
     need_particles: bool = False,
 ) -> None:
-    cfg["write_u"] = need_velocity_fields
-    cfg["write_v"] = need_velocity_fields
+    cfg["write_u"] = False
+    cfg["write_v"] = False
     cfg["write_p"] = False
     cfg["write_div"] = False
     cfg["write_smoke"] = False
     cfg["write_norm_velocity"] = True
+    cfg["write_vorticity"] = need_vorticity_field
     cfg["write_particles"] = need_particles
 
 
@@ -346,7 +381,7 @@ def make_config(spec: RunSpec, args: argparse.Namespace) -> dict:
 
     disable_heavy_outputs(
         cfg,
-        need_velocity_fields=args.analysis in ("vorticity", "ppc"),
+        need_vorticity_field=args.analysis in ("vorticity", "ppc"),
         need_particles=args.write_particles or args.make_videos,
     )
     return cfg
@@ -356,7 +391,7 @@ def make_specs(args: argparse.Namespace) -> List[RunSpec]:
     tests = parse_name_list(args.test, REPORT_TESTS.keys())
     methods = parse_name_list(args.methods, REPORT_METHODS)
     ppcs = parse_int_list(args.ppc, (3,), min_value=0, value_name="ppc")
-    threads = parse_int_list(args.threads, (scheduler_threads(),), value_name="thread")
+    threads = parse_int_list(args.threads, (default_run_threads(),), value_name="thread")
     flip_coefs = parse_float_list(args.flip_coef_pic, (0.05,))
     out_root = args.out.resolve()
     misc_root = args.misc_dir.resolve()
@@ -514,10 +549,16 @@ def base_row(spec: RunSpec) -> dict:
     }
 
 
+def require_numpy(task: str) -> None:
+    if np is None:
+        raise RuntimeError(f"numpy is required to extract {task}")
+
+
 def extract_kinetic_energy(spec: RunSpec, cfg: dict) -> List[dict]:
+    require_numpy("kinetic energy")
     pvd_path = spec.raw_dir / "normVelocity.pvd"
-    if not pvd_path.exists() or np is None:
-        return []
+    if not pvd_path.exists():
+        raise FileNotFoundError(f"missing velocity norm PVD: {pvd_path}")
 
     dx = float(cfg.get("dx", 1.0))
     dy = float(cfg.get("dy", 1.0))
@@ -525,25 +566,49 @@ def extract_kinetic_energy(spec: RunSpec, cfg: dict) -> List[dict]:
     dt = float(cfg.get("dt", 1.0))
     sampling_rate = int(cfg.get("sampling_rate", 1))
     paths = parse_pvd(pvd_path)
+    if not paths:
+        raise RuntimeError(f"{pvd_path} contains no VTK frames")
 
     values = []
+    missing = 0
     for sample_index, vti_path in enumerate(paths):
         if not vti_path.exists():
+            missing += 1
             continue
         speed = read_vti_field(vti_path, "normVelocity")
-        kinetic_energy = 0.5 * density * dx * dy * float(np.sum(speed * speed))
+        speed_l2_sq = dx * dy * float(np.sum(speed * speed))
+        velocity_l2 = math.sqrt(max(0.0, speed_l2_sq))
+        kinetic_energy = 0.5 * density * speed_l2_sq
         step = sample_index * sampling_rate
-        values.append((sample_index, step, step * dt, kinetic_energy))
+        values.append((sample_index, step, step * dt, kinetic_energy, velocity_l2))
+    if not values:
+        raise RuntimeError(
+            f"no readable normVelocity frames under {spec.raw_dir} "
+            f"({missing} missing)"
+        )
 
     reference = next(
-        (ke for _sample, step, _time, ke in values if step > 0 and abs(ke) > 1e-30),
+        (ke for _sample, step, _time, ke, _l2 in values if step > 0 and abs(ke) > 1e-30),
         None,
     )
     if reference is None:
-        reference = next((ke for _sample, _step, _time, ke in values if abs(ke) > 1e-30), 1.0)
+        reference = next((ke for _sample, _step, _time, ke, _l2 in values if abs(ke) > 1e-30), 1.0)
+    reference_l2 = next(
+        (
+            l2
+            for _sample, step, _time, _ke, l2 in values
+            if step > 0 and abs(l2) > 1e-30
+        ),
+        None,
+    )
+    if reference_l2 is None:
+        reference_l2 = next(
+            (l2 for _sample, _step, _time, _ke, l2 in values if abs(l2) > 1e-30),
+            1.0,
+        )
 
     rows = []
-    for sample_index, step, sim_time, kinetic_energy in values:
+    for sample_index, step, sim_time, kinetic_energy, velocity_l2 in values:
         rows.append(
             merge_row(
                 base_row(spec),
@@ -553,6 +618,8 @@ def extract_kinetic_energy(spec: RunSpec, cfg: dict) -> List[dict]:
                 "time": sim_time,
                 "kinetic_energy": kinetic_energy,
                 "normalized_ke": kinetic_energy / reference,
+                "velocity_l2": velocity_l2,
+                "normalized_velocity_l2": velocity_l2 / reference_l2,
                 },
             )
         )
@@ -560,8 +627,7 @@ def extract_kinetic_energy(spec: RunSpec, cfg: dict) -> List[dict]:
 
 
 def compute_vorticity(u_field, v_field, dx: float, dy: float):
-    if np is None:
-        raise RuntimeError("numpy is required to compute vorticity")
+    require_numpy("vorticity")
     ny = min(u_field.shape[0], v_field.shape[0] - 1)
     nx = min(u_field.shape[1] - 1, v_field.shape[1])
     if nx <= 1 or ny <= 1:
@@ -571,28 +637,21 @@ def compute_vorticity(u_field, v_field, dx: float, dy: float):
     return dv_dx - du_dy
 
 
-def extract_vorticity(spec: RunSpec, cfg: dict) -> Tuple[List[dict], List[Tuple[float, object]]]:
-    u_pvd = spec.raw_dir / "u.pvd"
-    v_pvd = spec.raw_dir / "v.pvd"
-    if not u_pvd.exists() or not v_pvd.exists() or np is None:
-        return [], []
-
+def vorticity_rows_from_frames(
+    spec: RunSpec,
+    cfg: dict,
+    frames_by_sample: List[Tuple[int, object]],
+) -> Tuple[List[dict], List[Tuple[float, object]]]:
     dx = float(cfg.get("dx", 1.0))
     dy = float(cfg.get("dy", 1.0))
     dt = float(cfg.get("dt", 1.0))
     sampling_rate = int(cfg.get("sampling_rate", 1))
-    u_paths = parse_pvd(u_pvd)
-    v_paths = parse_pvd(v_pvd)
     rows = []
     frames = []
-    for sample_index, (u_path, v_path) in enumerate(zip(u_paths, v_paths)):
-        if not u_path.exists() or not v_path.exists():
-            continue
-        u_field = read_vti_field(u_path, "u")
-        v_field = read_vti_field(v_path, "v")
-        omega = compute_vorticity(u_field, v_field, dx, dy)
+    for sample_index, omega in frames_by_sample:
         step = sample_index * sampling_rate
         abs_omega = np.abs(omega)
+        vorticity_l2 = math.sqrt(max(0.0, dx * dy * float(np.sum(omega * omega))))
         rows.append(
             merge_row(
                 base_row(spec),
@@ -602,12 +661,89 @@ def extract_vorticity(spec: RunSpec, cfg: dict) -> Tuple[List[dict], List[Tuple[
                 "time": step * dt,
                 "mean_abs_vorticity": float(np.mean(abs_omega)),
                 "max_abs_vorticity": float(np.max(abs_omega)),
-                "enstrophy": float(0.5 * dx * dy * np.sum(omega * omega)),
+                "vorticity_l2": vorticity_l2,
+                "enstrophy": float(0.5 * vorticity_l2 * vorticity_l2),
                 },
             )
         )
         frames.append((step * dt, omega))
     return rows, frames
+
+
+def extract_vorticity_field(
+    spec: RunSpec,
+    cfg: dict,
+) -> Tuple[List[dict], List[Tuple[float, object]]]:
+    pvd_path = spec.raw_dir / "vorticity.pvd"
+    if not pvd_path.exists():
+        raise FileNotFoundError(f"missing vorticity PVD: {pvd_path}")
+    paths = parse_pvd(pvd_path)
+    if not paths:
+        raise RuntimeError(f"{pvd_path} contains no VTK frames")
+
+    frames_by_sample = []
+    missing = 0
+    for sample_index, vti_path in enumerate(paths):
+        if not vti_path.exists():
+            missing += 1
+            continue
+        frames_by_sample.append(
+            (sample_index, read_vti_field(vti_path, "vorticity"))
+        )
+    if not frames_by_sample:
+        raise RuntimeError(
+            f"no readable vorticity frames under {spec.raw_dir} ({missing} missing)"
+        )
+    return vorticity_rows_from_frames(spec, cfg, frames_by_sample)
+
+
+def extract_vorticity_from_velocity_components(
+    spec: RunSpec,
+    cfg: dict,
+) -> Tuple[List[dict], List[Tuple[float, object]]]:
+    u_pvd = spec.raw_dir / "u.pvd"
+    v_pvd = spec.raw_dir / "v.pvd"
+    missing_pvds = [str(path) for path in (u_pvd, v_pvd) if not path.exists()]
+    if missing_pvds:
+        raise FileNotFoundError(
+            f"missing velocity component PVD(s): {', '.join(missing_pvds)}"
+        )
+    u_paths = parse_pvd(u_pvd)
+    v_paths = parse_pvd(v_pvd)
+    if not u_paths or not v_paths:
+        raise RuntimeError(f"{u_pvd} or {v_pvd} contains no VTK frames")
+
+    dx = float(cfg.get("dx", 1.0))
+    dy = float(cfg.get("dy", 1.0))
+    frames_by_sample = []
+    missing = 0
+    for sample_index, (u_path, v_path) in enumerate(zip(u_paths, v_paths)):
+        if not u_path.exists() or not v_path.exists():
+            missing += 1
+            continue
+        u_field = read_vti_field(u_path, "u")
+        v_field = read_vti_field(v_path, "v")
+        frames_by_sample.append(
+            (sample_index, compute_vorticity(u_field, v_field, dx, dy))
+        )
+    if not frames_by_sample:
+        raise RuntimeError(
+            f"no readable u/v frames under {spec.raw_dir} ({missing} missing pairs)"
+        )
+    return vorticity_rows_from_frames(spec, cfg, frames_by_sample)
+
+
+def extract_vorticity(spec: RunSpec, cfg: dict) -> Tuple[List[dict], List[Tuple[float, object]]]:
+    require_numpy("vorticity")
+    try:
+        return extract_vorticity_field(spec, cfg)
+    except FileNotFoundError as field_error:
+        try:
+            return extract_vorticity_from_velocity_components(spec, cfg)
+        except FileNotFoundError as component_error:
+            raise FileNotFoundError(
+                f"{field_error}; fallback also failed: {component_error}"
+            ) from component_error
 
 
 def parse_max_div(spec: RunSpec, text: str, cfg: dict) -> List[dict]:
@@ -745,11 +881,13 @@ def run_one(
     kinetic_rows = []
     div_rows = []
     vorticity_rows = []
+    extraction_errors = []
     try:
         if result.returncode == 0:
             try:
                 kinetic_rows = extract_kinetic_energy(spec, cfg)
             except Exception as exc:
+                extraction_errors.append(f"kinetic energy: {exc}")
                 print(f"[warn] {spec.name}: could not extract kinetic energy: {exc}")
             if analysis in ("vorticity", "ppc"):
                 try:
@@ -757,12 +895,13 @@ def run_one(
                     if write_images:
                         save_vorticity_images(spec, vorticity_frames, img_root, image_formats)
                 except Exception as exc:
+                    extraction_errors.append(f"vorticity: {exc}")
                     print(f"[warn] {spec.name}: could not extract vorticity: {exc}")
             div_rows = parse_max_div(spec, combined, cfg)
             if should_make_video(spec, video_options):
                 write_particle_video(spec, video_options)
     finally:
-        if not keep_raw and spec.raw_dir.exists():
+        if not keep_raw and not extraction_errors and spec.raw_dir.exists():
             shutil.rmtree(spec.raw_dir)
         if no_run_logs and spec.run_dir.exists():
             try:
@@ -778,20 +917,26 @@ def run_one(
 
     done_time = parse_done_time(combined)
     summary = merge_row(base_row(spec), {
-        "status": "ok" if result.returncode == 0 else "failed",
+        "status": "ok" if result.returncode == 0 and not extraction_errors else "failed",
         "returncode": result.returncode,
         "wall_time_s": wall_time,
         "reported_time_s": done_time if done_time is not None else "",
         "final_kinetic_energy": kinetic_rows[-1]["kinetic_energy"] if kinetic_rows else "",
         "final_normalized_ke": kinetic_rows[-1]["normalized_ke"] if kinetic_rows else "",
+        "final_velocity_l2": kinetic_rows[-1]["velocity_l2"] if kinetic_rows else "",
+        "final_normalized_velocity_l2": kinetic_rows[-1]["normalized_velocity_l2"] if kinetic_rows else "",
         "final_enstrophy": vorticity_rows[-1]["enstrophy"] if vorticity_rows else "",
+        "final_vorticity_l2": vorticity_rows[-1]["vorticity_l2"] if vorticity_rows else "",
         "final_mean_abs_vorticity": vorticity_rows[-1]["mean_abs_vorticity"] if vorticity_rows else "",
         "final_max_abs_vorticity": vorticity_rows[-1]["max_abs_vorticity"] if vorticity_rows else "",
         "max_div": max((row["max_div"] for row in div_rows), default=""),
         "config": str(spec.config_path),
+        "error": "; ".join(extraction_errors),
     })
     if result.returncode != 0:
         print(f"[fail] {spec.name} exited with {result.returncode}")
+    elif extraction_errors:
+        print(f"[fail] {spec.name}: required analysis extraction failed")
     return summary, kinetic_rows, div_rows, vorticity_rows
 
 
@@ -858,6 +1003,87 @@ def optional_floats(rows: List[dict], key: str) -> List[float]:
     return values
 
 
+def config_density(row: dict, cache: Dict[str, float]) -> float:
+    config = row.get("config", "")
+    if not config:
+        return 1.0
+    if config not in cache:
+        try:
+            cache[config] = float(load_config(Path(config)).get("density", 1.0))
+        except Exception:
+            cache[config] = 1.0
+    return cache[config]
+
+
+def backfill_l2_columns(
+    summary_rows: List[dict],
+    ke_rows: List[dict],
+    vorticity_rows: List[dict],
+) -> None:
+    summary_by_run = {row.get("run"): row for row in summary_rows if row.get("run")}
+    density_cache: Dict[str, float] = {}
+
+    ke_by_run: Dict[str, List[dict]] = {}
+    for row in ke_rows:
+        run = row.get("run")
+        if not run:
+            continue
+        summary = summary_by_run.get(run, {})
+        density = config_density(summary, density_cache)
+        kinetic_energy = optional_float(row.get("kinetic_energy"))
+        if row.get("velocity_l2") in ("", None) and kinetic_energy is not None and density > 0.0:
+            row["velocity_l2"] = math.sqrt(max(0.0, 2.0 * kinetic_energy / density))
+        ke_by_run.setdefault(run, []).append(row)
+
+    for rows in ke_by_run.values():
+        reference = next(
+            (
+                optional_float(row.get("velocity_l2"))
+                for row in rows
+                if optional_float(row.get("step"), 0.0) > 0.0
+                and optional_float(row.get("velocity_l2")) not in (None, 0.0)
+            ),
+            None,
+        )
+        if reference is None:
+            reference = next(
+                (
+                    optional_float(row.get("velocity_l2"))
+                    for row in rows
+                    if optional_float(row.get("velocity_l2")) not in (None, 0.0)
+                ),
+                None,
+            )
+        for row in rows:
+            velocity_l2 = optional_float(row.get("velocity_l2"))
+            if velocity_l2 is not None and reference:
+                row["normalized_velocity_l2"] = velocity_l2 / reference
+
+    vort_by_run: Dict[str, List[dict]] = {}
+    for row in vorticity_rows:
+        run = row.get("run")
+        if not run:
+            continue
+        enstrophy = optional_float(row.get("enstrophy"))
+        if row.get("vorticity_l2") in ("", None) and enstrophy is not None:
+            row["vorticity_l2"] = math.sqrt(max(0.0, 2.0 * enstrophy))
+        vort_by_run.setdefault(run, []).append(row)
+
+    for row in summary_rows:
+        run = row.get("run")
+        if not run:
+            continue
+        if ke_by_run.get(run):
+            last_ke = ke_by_run[run][-1]
+            row["final_velocity_l2"] = last_ke.get("velocity_l2", "")
+            row["final_normalized_velocity_l2"] = last_ke.get(
+                "normalized_velocity_l2", ""
+            )
+        if vort_by_run.get(run):
+            last_vort = vort_by_run[run][-1]
+            row["final_vorticity_l2"] = last_vort.get("vorticity_l2", "")
+
+
 def save_comparison_summary(summary_rows: List[dict], out_root: Path) -> None:
     grouped = {}
     for row in summary_rows:
@@ -876,8 +1102,11 @@ def save_comparison_summary(summary_rows: List[dict], out_root: Path) -> None:
         wall = optional_floats(group, "wall_time_s")
         final_ke = optional_floats(group, "final_kinetic_energy")
         final_norm_ke = optional_floats(group, "final_normalized_ke")
+        final_velocity_l2 = optional_floats(group, "final_velocity_l2")
+        final_norm_velocity_l2 = optional_floats(group, "final_normalized_velocity_l2")
         max_div = optional_floats(group, "max_div")
         enstrophy = optional_floats(group, "final_enstrophy")
+        vorticity_l2 = optional_floats(group, "final_vorticity_l2")
         mean_abs_vorticity = optional_floats(group, "final_mean_abs_vorticity")
         max_abs_vorticity = optional_floats(group, "final_max_abs_vorticity")
         rows.append(
@@ -893,9 +1122,27 @@ def save_comparison_summary(summary_rows: List[dict], out_root: Path) -> None:
                 "final_kinetic_energy_std": std(final_ke),
                 "final_normalized_ke_mean": mean(final_norm_ke),
                 "final_normalized_ke_std": std(final_norm_ke),
+                "final_velocity_l2_mean": mean(final_velocity_l2)
+                if final_velocity_l2
+                else "",
+                "final_velocity_l2_std": std(final_velocity_l2)
+                if final_velocity_l2
+                else "",
+                "final_normalized_velocity_l2_mean": mean(final_norm_velocity_l2)
+                if final_norm_velocity_l2
+                else "",
+                "final_normalized_velocity_l2_std": std(final_norm_velocity_l2)
+                if final_norm_velocity_l2
+                else "",
                 "max_div_max": max(max_div) if max_div else "",
                 "final_enstrophy_mean": mean(enstrophy) if enstrophy else "",
                 "final_enstrophy_std": std(enstrophy) if enstrophy else "",
+                "final_vorticity_l2_mean": mean(vorticity_l2)
+                if vorticity_l2
+                else "",
+                "final_vorticity_l2_std": std(vorticity_l2)
+                if vorticity_l2
+                else "",
                 "final_mean_abs_vorticity_mean": mean(mean_abs_vorticity)
                 if mean_abs_vorticity
                 else "",
@@ -975,9 +1222,36 @@ def method_color(row: dict):
 
 
 def postprocess_csv(out_root: Path) -> None:
-    summary_rows = [row for row in read_csv(out_root / "summary.csv") if row.get("status") == "ok"]
+    summary_rows = read_csv(out_root / "summary.csv")
+    ke_rows = read_csv(out_root / "kinetic_energy.csv")
+    vorticity_rows = read_csv(out_root / "vorticity.csv")
     if summary_rows:
-        save_comparison_summary(summary_rows, out_root)
+        backfill_l2_columns(summary_rows, ke_rows, vorticity_rows)
+        write_csv(out_root / "summary.csv", summary_rows)
+        write_csv(out_root / "kinetic_energy.csv", ke_rows)
+        write_csv(out_root / "vorticity.csv", vorticity_rows)
+        save_comparison_summary(
+            [row for row in summary_rows if row.get("status") == "ok"],
+            out_root,
+        )
+
+
+def has_run_rows(rows: List[dict], run: str) -> bool:
+    return any(row.get("run") == run for row in rows)
+
+
+def missing_required_metrics(
+    run: str,
+    analysis: str,
+    kinetic_rows: List[dict],
+    vorticity_rows: List[dict],
+) -> List[str]:
+    missing = []
+    if not has_run_rows(kinetic_rows, run):
+        missing.append("kinetic_energy")
+    if analysis in ("vorticity", "ppc") and not has_run_rows(vorticity_rows, run):
+        missing.append("vorticity")
+    return missing
 
 
 def finite_values(rows: List[dict], key: str) -> List[float]:
@@ -1142,24 +1416,24 @@ def plot_pic_ppc_energy(
     plot_metric_series(
         ax,
         pic_ke_rows,
-        "kinetic_energy",
-        "Kinetic energy E_k",
-        f"{test}: PIC kinetic energy E_k(t) by particles per cell",
-        "No PIC kinetic energy rows",
+        "velocity_l2",
+        "Velocity L2 norm ||u||_2",
+        f"{test}: PIC velocity L2 norm ||u||_2(t) by particles per cell",
+        "No PIC velocity L2 rows",
         key_func=lambda row: (int(float(row["ppc"])),),
         label_func=lambda row: f"ppc={int(float(row['ppc']))}",
         color_func=ppc_color,
         legend_columns=3 if len(ppcs) > 12 else 2,
     )
     fig.tight_layout()
-    save_figure(fig, plot_dir / f"{test}_pic_ppc_ek_time", formats=image_formats)
+    save_figure(fig, plot_dir / f"{test}_pic_ppc_velocity_l2_time", formats=image_formats)
     plt.close(fig)
 
     final_groups: Dict[int, List[float]] = {}
     for row in summary_rows:
         if row.get("test") != test or row.get("method") != "pic" or row.get("status") != "ok":
             continue
-        value = optional_float(row.get("final_kinetic_energy"))
+        value = optional_float(row.get("final_velocity_l2"))
         if value is None:
             continue
         final_groups.setdefault(int(float(row["ppc"])), []).append(value)
@@ -1171,11 +1445,11 @@ def plot_pic_ppc_energy(
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.errorbar(xs, ys, yerr=yerr, fmt="o-", capsize=4, color="#1f77b4")
     ax.set_xlabel("Particles per cell per direction ppcx = ppcy")
-    ax.set_ylabel("Final kinetic energy E_k")
-    ax.set_title(f"{test}: final PIC kinetic energy versus ppc")
+    ax.set_ylabel("Final velocity L2 norm ||u||_2")
+    ax.set_title(f"{test}: final PIC velocity L2 norm versus ppc")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    save_figure(fig, plot_dir / f"{test}_pic_ppc_final_ek", formats=image_formats)
+    save_figure(fig, plot_dir / f"{test}_pic_ppc_final_velocity_l2", formats=image_formats)
     plt.close(fig)
 
 
@@ -1188,6 +1462,7 @@ def plot_all(
         print("[plot] matplotlib not available; skipping plots")
         return
 
+    postprocess_csv(out_root)
     summary_rows = [row for row in read_csv(out_root / "summary.csv") if row.get("status") == "ok"]
     ke_rows = read_csv(out_root / "kinetic_energy.csv")
     vorticity_rows = read_csv(out_root / "vorticity.csv")
@@ -1199,8 +1474,6 @@ def plot_all(
             f"[plot] {out_root}: max_div.csv has rows, but kinetic_energy.csv "
             "and vorticity.csv are empty; skipping max-div-only plots"
         )
-    postprocess_csv(out_root)
-
     plot_dir = img_root
     plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1213,12 +1486,12 @@ def plot_all(
 
         labels = []
         wall = []
-        final_ke = []
+        final_velocity_l2 = []
         for _key, group in sorted(groups.items(), key=lambda item: method_sort_key(item[1][0])):
             labels.append(label_for(group[0], include_ppc=True))
             wall.append(mean([float(row["wall_time_s"]) for row in group]))
-            ke_values = finite_values(group, "final_normalized_ke")
-            final_ke.append(mean(ke_values))
+            velocity_l2_values = finite_values(group, "final_normalized_velocity_l2")
+            final_velocity_l2.append(mean(velocity_l2_values))
 
         fig, ax = plt.subplots(figsize=(max(8, 0.5 * len(labels)), 5))
         ax.bar(range(len(labels)), wall)
@@ -1230,15 +1503,15 @@ def plot_all(
         save_figure(fig, plot_dir / f"{test}_runtime", formats=image_formats)
         plt.close(fig)
 
-        if any(math.isfinite(value) for value in final_ke):
+        if any(math.isfinite(value) for value in final_velocity_l2):
             fig, ax = plt.subplots(figsize=(max(8, 0.5 * len(labels)), 5))
-            ax.bar(range(len(labels)), final_ke)
+            ax.bar(range(len(labels)), final_velocity_l2)
             ax.set_xticks(range(len(labels)), labels, rotation=35, ha="right")
-            ax.set_ylabel("Final kinetic energy ratio")
-            ax.set_title(f"{test}: final E_k / reference E_k")
+            ax.set_ylabel("Final velocity L2 norm ratio")
+            ax.set_title(f"{test}: final ||u||_2 / reference ||u||_2")
             ax.grid(axis="y", alpha=0.3)
             fig.tight_layout()
-            save_figure(fig, plot_dir / f"{test}_final_ke", formats=image_formats)
+            save_figure(fig, plot_dir / f"{test}_final_velocity_l2", formats=image_formats)
             plt.close(fig)
 
         for ppc in sorted({row["ppc"] for row in test_summary}, key=lambda value: int(value)):
@@ -1246,10 +1519,10 @@ def plot_all(
                 test,
                 ppc,
                 ke_rows,
-                "kinetic_energy",
-                "Kinetic energy E_k",
-                f"{test}: kinetic energy E_k(t), ppc={ppc}",
-                f"{test}_ek_time_ppc{ppc}",
+                "velocity_l2",
+                "Velocity L2 norm ||u||_2",
+                f"{test}: velocity L2 norm ||u||_2(t), ppc={ppc}",
+                f"{test}_velocity_l2_time_ppc{ppc}",
                 plot_dir,
                 image_formats,
             )
@@ -1257,10 +1530,10 @@ def plot_all(
                 test,
                 ppc,
                 vorticity_rows,
-                "mean_abs_vorticity",
-                "Mean vorticity V = mean |omega|",
-                f"{test}: vorticity V(t), ppc={ppc}",
-                f"{test}_vorticity_time_ppc{ppc}",
+                "vorticity_l2",
+                "Vorticity L2 norm ||omega||_2",
+                f"{test}: vorticity L2 norm ||omega||_2(t), ppc={ppc}",
+                f"{test}_vorticity_l2_time_ppc{ppc}",
                 plot_dir,
                 image_formats,
             )
@@ -1396,6 +1669,12 @@ def main() -> int:
         row["run"]
         for row in summary_rows
         if row.get("run") and row.get("status") == "ok"
+        and not missing_required_metrics(
+            row["run"],
+            args.analysis,
+            ke_rows,
+            vorticity_rows,
+        )
     }
 
     failures = 0
@@ -1403,6 +1682,20 @@ def main() -> int:
         if spec.name in completed:
             print(f"[skip] {spec.name}: already present in summary.csv")
             continue
+        missing_metrics = missing_required_metrics(
+            spec.name,
+            args.analysis,
+            ke_rows,
+            vorticity_rows,
+        )
+        if missing_metrics and any(
+            row.get("run") == spec.name and row.get("status") == "ok"
+            for row in summary_rows
+        ):
+            print(
+                f"[rerun] {spec.name}: summary is ok but missing "
+                f"{', '.join(missing_metrics)} rows"
+            )
         summary_rows = drop_run(summary_rows, spec.name)
         ke_rows = drop_run(ke_rows, spec.name)
         div_rows = drop_run(div_rows, spec.name)

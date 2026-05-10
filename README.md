@@ -59,6 +59,7 @@ make -C PostPro build
 make -C PostPro sbatch
 make -C PostPro postpro
 make -C PostPro plot
+make -C PostPro free-fall-particles
 make -C PostPro video
 make -C PostPro clean
 ```
@@ -70,13 +71,17 @@ make -C PostPro clean
 - `make postpro` regenerates derived CSV files from `data/`.
 - `make plot` writes energy/vorticity comparison figures into `img/` in
   `png`, `svg`, `pdf`, and `jpg` formats.
-- `make postpro-run` builds PICM, runs the selected PIC/FLIP/APIC report
-  simulations, extracts CSV data, writes plots, and encodes particle MP4 clips
-  with the `viridis` colormap under `video/postpro_run/`.
+- `make postpro-run` builds PICM, runs the selected report simulations, and
+  extracts CSV data/plots. By default it is a low-CPU local smoke run: PIC and
+  pure FLIP only, one OpenMP thread.
+- `make free-fall-particles` runs the no-water falling-block particle study
+  and compares particle vertical velocity percentiles against `v_th = v0 + g t`.
 - `make video` recursively scans `test/PIC`, `test/FLIP`, and `test/APIC`,
   runs every JSON with `write_particles: true`, and writes one white-background
   `viridis` MP4 per config under `video/` using the same directory structure.
-  Existing MP4 files are regenerated.
+  Existing MP4 files are regenerated. Encoding uses automatic FFmpeg encoder
+  selection, preferring working hardware HEVC/H.264 encoders and falling back
+  to slow high-compression software HEVC/H.264.
 - `make clean` removes PICM build folders, raw simulation fields, image output,
   video output, and Python caches while keeping CSV files under `data/`.
 
@@ -104,6 +109,14 @@ PICM_SCALING_THREADS=1,2,4,8,16,32,64 sbatch slurm/study_pic_scaling.slurm
 PICM_SOLVER_TOLERANCES=1e-1,1e-2,1e-3 sbatch slurm/study_iterative_solvers.slurm
 ```
 
+Low-CPU local comparison:
+
+```bash
+make -C PostPro postpro-run
+POSTPRO_RUN_METHODS=apic,flip,pic POSTPRO_RUN_FLIP_COEF=0.1,0.05 make -C PostPro postpro-run
+make -C PostPro free-fall-particles
+```
+
 ## Data and Image Overrides
 
 Defaults:
@@ -122,11 +135,11 @@ You normally do not need to set these.
 `make plot` uses `kinetic_energy.csv`, `vorticity.csv`, and
 `iterations.csv` for the main report figures:
 
-- `E_k(t)` is the absolute kinetic-energy time series.
-- `V(t)` is the mean absolute vorticity time series.
+- `||u||_2(t)` is the velocity L2 norm derived from the saved norm-velocity field.
+- `||omega||_2(t)` is the vorticity L2 norm derived from the saved vorticity field.
 - `Iter(t)` is the pressure-solver iteration count per solve.
-- the PPC study plots PIC `E_k(t)` for `ppc=0..25` by default, plus final
-  kinetic energy versus ppc.
+- the PPC study plots PIC `||u||_2(t)` for `ppc=0..25` by default, plus final
+  velocity L2 norm versus ppc.
 
 `max_div.csv` is still kept as diagnostic CSV data, but it is not used as the
 main PPC plot. If the energy or vorticity CSV files are empty, rerun the Slurm

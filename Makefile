@@ -23,16 +23,27 @@ EIGEN_ROOT ?=
 CMAKE_COMMON_ARGS := -DUSE_GPU=OFF -DUSE_PARALLEL=ON $(if $(EIGEN_ROOT),-DCMAKE_PREFIX_PATH="$(EIGEN_ROOT)") $(CMAKE_ARGS)
 
 POSTPRO_RUN_TEST ?= falling-block-water
-POSTPRO_RUN_METHODS ?= pic,flip,apic
+POSTPRO_RUN_METHODS ?= pic,flip
 POSTPRO_RUN_PPC ?= 3
 POSTPRO_RUN_FLIP_COEF ?= 0
-POSTPRO_RUN_THREADS ?= $(shell nproc 2>/dev/null || echo 1)
+POSTPRO_RUN_THREADS ?= 1
 POSTPRO_RUN_SAMPLES ?= 40
 POSTPRO_RUN_OUT ?= $(DATA_DIR)/postpro_run
 POSTPRO_RUN_MISC ?= $(MISC_DIR)/postpro_run
 POSTPRO_RUN_IMG ?= $(IMG_DIR)/postpro_run
+POSTPRO_RUN_BUILD_DIR ?= $(PICM_ROOT)/build-local-report-release
+POSTPRO_RUN_BUILD_JOBS ?= 1
 POSTPRO_VIDEO_WORKERS ?= 1
 POSTPRO_RUN_ARGS ?=
+FREE_FALL_METHODS ?= pic
+FREE_FALL_THREADS ?= 1
+FREE_FALL_NT ?= 300
+FREE_FALL_PPC ?= 3
+FREE_FALL_SAMPLING_RATE ?= 5
+FREE_FALL_OUT ?= $(DATA_DIR)/study_free_fall_particles
+FREE_FALL_MISC ?= $(MISC_DIR)/study_free_fall_particles
+FREE_FALL_IMG ?= $(IMG_DIR)/study_free_fall_particles
+FREE_FALL_ARGS ?=
 VIDEO_CONFIG_ROOTS ?= test/PIC,test/FLIP,test/APIC
 VIDEO_MISC ?= $(MISC_DIR)/video
 VIDEO_THREADS ?= $(shell nproc 2>/dev/null || echo 1)
@@ -43,6 +54,9 @@ VIDEO_HEIGHT ?= 720
 VIDEO_WORKERS ?= 1
 VIDEO_BACKGROUND ?= white
 VIDEO_FORCE ?= --force
+VIDEO_ENCODER ?= auto
+VIDEO_CRF ?= 24
+VIDEO_PRESET ?= veryslow
 VIDEO_ARGS ?=
 
 STUDY_SLURM := \
@@ -52,7 +66,7 @@ STUDY_SLURM := \
 	$(POSTPRO_ROOT)/slurm/study_iterative_solvers.slurm \
 	$(POSTPRO_ROOT)/slurm/study_pic_scaling.slurm
 
-.PHONY: clean build build-release require-build sbatch postpro plot postpro-run video
+.PHONY: clean build build-release build-local-release require-build sbatch postpro plot postpro-run free-fall-particles video
 
 clean:
 	find "$(PICM_ROOT)" -maxdepth 1 -type d \( -name 'build*' -o -name 'cmake-build*' \) -prune -exec rm -rf {} +
@@ -68,6 +82,11 @@ build-release:
 	cmake -S "$(PICM_ROOT)" -B "$(RELEASE_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release $(CMAKE_COMMON_ARGS)
 	cmake --build "$(RELEASE_BUILD_DIR)" -j"$(BUILD_JOBS)"
 	@test -x "$(RELEASE_BUILD_DIR)/bin/PIC" || { echo "[error] build finished but missing $(RELEASE_BUILD_DIR)/bin/PIC"; exit 1; }
+
+build-local-release:
+	cmake -S "$(PICM_ROOT)" -B "$(POSTPRO_RUN_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release $(CMAKE_COMMON_ARGS)
+	cmake --build "$(POSTPRO_RUN_BUILD_DIR)" -j"$(POSTPRO_RUN_BUILD_JOBS)"
+	@test -x "$(POSTPRO_RUN_BUILD_DIR)/bin/PIC" || { echo "[error] build finished but missing $(POSTPRO_RUN_BUILD_DIR)/bin/PIC"; exit 1; }
 
 build: build-release
 	cmake -S "$(PICM_ROOT)" -B "$(DEBUG_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Debug $(CMAKE_COMMON_ARGS)
@@ -90,7 +109,7 @@ postpro:
 plot:
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/plot_all.py" --data "$(DATA_DIR)" --img "$(IMG_DIR)"
 
-postpro-run: build-release
+postpro-run: build-local-release
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" PICM_POSTPRO_VIDEO="$(VIDEO_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/report_compare.py" \
 		--analysis vorticity \
 		--test "$(POSTPRO_RUN_TEST)" \
@@ -102,15 +121,28 @@ postpro-run: build-release
 		--out "$(POSTPRO_RUN_OUT)" \
 		--misc-dir "$(POSTPRO_RUN_MISC)" \
 		--img-dir "$(POSTPRO_RUN_IMG)" \
-		--build-dir "$(RELEASE_BUILD_DIR)" \
+		--build-dir "$(POSTPRO_RUN_BUILD_DIR)" \
 		--skip-build \
 		--force \
-		--make-videos \
 		--video-dir "$(VIDEO_DIR)/postpro_run" \
 		--video-methods "pic,flip,apic" \
 		--video-cmap "viridis" \
 		--video-workers "$(POSTPRO_VIDEO_WORKERS)" \
 		$(POSTPRO_RUN_ARGS)
+
+free-fall-particles: build-local-release
+	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/free_fall_particles.py" \
+		--methods "$(FREE_FALL_METHODS)" \
+		--ppc "$(FREE_FALL_PPC)" \
+		--threads "$(FREE_FALL_THREADS)" \
+		--nt "$(FREE_FALL_NT)" \
+		--sampling-rate "$(FREE_FALL_SAMPLING_RATE)" \
+		--out "$(FREE_FALL_OUT)" \
+		--misc-dir "$(FREE_FALL_MISC)" \
+		--img-dir "$(FREE_FALL_IMG)" \
+		--build-dir "$(POSTPRO_RUN_BUILD_DIR)" \
+		--skip-build \
+		$(FREE_FALL_ARGS)
 
 video: build-release
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_VIDEO="$(VIDEO_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/video_all.py" \
@@ -126,5 +158,8 @@ video: build-release
 		--workers "$(VIDEO_WORKERS)" \
 		--cmap "viridis" \
 		--background "$(VIDEO_BACKGROUND)" \
+		--encoder "$(VIDEO_ENCODER)" \
+		--crf "$(VIDEO_CRF)" \
+		--preset "$(VIDEO_PRESET)" \
 		$(VIDEO_FORCE) \
 		$(VIDEO_ARGS)
