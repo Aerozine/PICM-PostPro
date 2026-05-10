@@ -44,7 +44,7 @@ FREE_FALL_OUT ?= $(DATA_DIR)/study_free_fall_particles
 FREE_FALL_MISC ?= $(MISC_DIR)/study_free_fall_particles
 FREE_FALL_IMG ?= $(IMG_DIR)/study_free_fall_particles
 FREE_FALL_ARGS ?=
-VIDEO_CONFIG_ROOTS ?= test/PIC,test/FLIP,test/APIC
+VIDEO_CONFIG_ROOTS ?= test/PIC/extra,test/FLIP,test/APIC
 VIDEO_MISC ?= $(MISC_DIR)/video
 VIDEO_THREADS ?= $(shell nproc 2>/dev/null || echo 1)
 VIDEO_FPS ?= 30
@@ -58,6 +58,18 @@ VIDEO_ENCODER ?= auto
 VIDEO_CRF ?= 24
 VIDEO_PRESET ?= veryslow
 VIDEO_ARGS ?=
+POSTPRO_EXTRACT_ANALYSIS ?= vorticity
+POSTPRO_EXTRACT_TEST ?= falling-block-water
+POSTPRO_EXTRACT_METHODS ?= pic,flip,apic
+POSTPRO_EXTRACT_PPC ?= 3
+POSTPRO_EXTRACT_FLIP_COEF ?= 0,0.01,0.05,0.1
+POSTPRO_EXTRACT_THREADS ?= 32
+POSTPRO_EXTRACT_REPEATS ?= 1
+POSTPRO_EXTRACT_SAMPLES ?= 40
+POSTPRO_EXTRACT_OUT ?= $(DATA_DIR)/study_vorticity
+POSTPRO_EXTRACT_MISC ?= $(MISC_DIR)/study_vorticity
+POSTPRO_EXTRACT_IMG ?= $(IMG_DIR)/study_vorticity
+POSTPRO_EXTRACT_ARGS ?=
 
 STUDY_SLURM := \
 	$(POSTPRO_ROOT)/slurm/study_energy.slurm \
@@ -66,7 +78,7 @@ STUDY_SLURM := \
 	$(POSTPRO_ROOT)/slurm/study_iterative_solvers.slurm \
 	$(POSTPRO_ROOT)/slurm/study_pic_scaling.slurm
 
-.PHONY: clean build build-release build-local-release require-build sbatch postpro plot postpro-run free-fall-particles video
+.PHONY: clean build build-release build-local-release require-build sbatch postpro plot postpro-run postpro-extract free-fall-particles video
 
 clean:
 	find "$(PICM_ROOT)" -maxdepth 1 -type d \( -name 'build*' -o -name 'cmake-build*' \) -prune -exec rm -rf {} +
@@ -108,6 +120,22 @@ postpro:
 
 plot:
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/plot_all.py" --data "$(DATA_DIR)" --img "$(IMG_DIR)"
+
+postpro-extract:
+	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/report_compare.py" \
+		--analysis "$(POSTPRO_EXTRACT_ANALYSIS)" \
+		--test "$(POSTPRO_EXTRACT_TEST)" \
+		--methods "$(POSTPRO_EXTRACT_METHODS)" \
+		--ppc "$(POSTPRO_EXTRACT_PPC)" \
+		--flip-coef-pic "$(POSTPRO_EXTRACT_FLIP_COEF)" \
+		--threads "$(POSTPRO_EXTRACT_THREADS)" \
+		--repeats "$(POSTPRO_EXTRACT_REPEATS)" \
+		--samples "$(POSTPRO_EXTRACT_SAMPLES)" \
+		--out "$(POSTPRO_EXTRACT_OUT)" \
+		--misc-dir "$(POSTPRO_EXTRACT_MISC)" \
+		--img-dir "$(POSTPRO_EXTRACT_IMG)" \
+		--extract-only \
+		$(POSTPRO_EXTRACT_ARGS)
 
 postpro-run: build-local-release
 	PICM_ROOT="$(PICM_ROOT)" PICM_POSTPRO_DATA="$(DATA_DIR)" PICM_POSTPRO_MISC="$(MISC_DIR)" PICM_POSTPRO_IMG="$(IMG_DIR)" PICM_POSTPRO_VIDEO="$(VIDEO_DIR)" $(PYTHON) "$(POSTPRO_ROOT)/report_compare.py" \

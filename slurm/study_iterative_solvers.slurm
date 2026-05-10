@@ -36,7 +36,7 @@ picm_slurm_init
 
 export OMP_PROC_BIND="${OMP_PROC_BIND:-spread}"
 
-CONFIG="${PICM_SOLVER_CONFIG:-$PICM_ROOT/test/PIC/dambreak.json}"
+CONFIG="${PICM_SOLVER_CONFIG:-$PICM_ROOT/test/PIC/extra/dambreak.json}"
 SOLVERS="${PICM_CPU_SOLVERS:-jacobi,gauss_seidel,red_black_gauss_seidel,miccg0,cg}"
 TOLERANCES="${PICM_SOLVER_TOLERANCES:-1e-2}"
 THREADS="${PICM_THREADS:-${SLURM_CPUS_PER_TASK:-32}}"

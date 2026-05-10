@@ -31,7 +31,7 @@ from picm_postpro.paths import (
     default_img_dir,
     default_misc_dir,
 )
-from picm_postpro.plots import parse_formats, save_figure
+from picm_postpro.plots import parse_formats, save_figure, PALETTE, style_ax, style_legend
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/picm_matplotlib")
 
@@ -63,28 +63,25 @@ def first_existing_path(*paths: Path) -> Path:
 REPORT_TESTS = {
     "falling-block-water": {
         "config": first_existing_path(
-            PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
             PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
         ),
         "reason": "falling block in water; useful for vorticity and energy conservation",
     },
     "freeFallInWater": {
         "config": first_existing_path(
-            PICM_ROOT / "test" / "PIC" / "freeFallInWater.json",
             PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
         ),
         "reason": "falling block in water; useful for vorticity and energy conservation",
     },
     "von-karman": {
         "config": first_existing_path(
-            PICM_ROOT / "test" / "PIC" / "von-karman.json",
+            PICM_ROOT / "test" / "PIC" / "extra" / "von-karman.json",
             PICM_ROOT / "test" / "PIC" / "section-5-5-1" / "von-karman.json",
         ),
         "reason": "wake dynamics behind an obstacle; exposes numerical diffusion",
     },
     "dambreak": {
         "config": first_existing_path(
-            PICM_ROOT / "test" / "PIC" / "dambreak.json",
             PICM_ROOT / "test" / "PIC" / "extra" / "dambreak.json",
         ),
         "reason": "free-surface collapse; exposes interface stability",
@@ -94,6 +91,7 @@ REPORT_TESTS = {
             PICM_ROOT
             / "test"
             / "PIC"
+            / "extra"
             / "vases-communicants"
             / "vases-communicants.json",
             PICM_ROOT / "test" / "PIC" / "section-5-5-3" / "vases-communicants.json",
@@ -106,15 +104,15 @@ REPORT_METHODS = ("pic", "flip", "apic")
 VIDEO_METHODS = ("pic", "flip", "apic", "mixed")
 DEFAULT_FLIP_COEF_PIC = "0,0.01,0.05,0.1"
 METHOD_COLORS = {
-    "pic": "#1f77b4",
-    "flip": "#ff7f0e",
-    "apic": "#2ca02c",
-    "mixed": "#9467bd",
+    "pic":   PALETTE["blue"],
+    "flip":  PALETTE["orange"],
+    "apic":  PALETTE["green"],
+    "mixed": PALETTE["purple"],
 }
 MIXED_FLIP_COLORS = {
-    0.01: "#9467bd",
-    0.05: "#d62728",
-    0.1: "#8c564b",
+    0.01: PALETTE["purple"],
+    0.05: PALETTE["pink"],
+    0.1:  PALETTE["grey"],
 }
 METHOD_ORDER = {"pic": 0, "flip": 1, "apic": 2, "mixed": 3}
 
@@ -802,9 +800,9 @@ def save_vorticity_images(
         vmax=vmax,
         aspect="auto",
     )
-    ax.set_title(f"{label_for(base_row(spec))}, t={sim_time:g}s")
-    ax.set_xlabel("i")
-    ax.set_ylabel("j")
+    style_ax(ax, xlabel="$i$", ylabel="$j$",
+             title=f"{label_for(base_row(spec))}, $t={sim_time:g}$ s",
+             grid=False, minorticks=False)
     fig.colorbar(image, ax=ax, label="vorticity")
     fig.tight_layout()
     save_figure(fig, image_dir / f"{spec.name}_final_vorticity", formats=image_formats)
@@ -856,6 +854,7 @@ def run_one(
     spec: RunSpec,
     binary: Path,
     keep_raw: bool,
+    defer_extraction: bool,
     analysis: str,
     no_run_logs: bool,
     write_images: bool,
@@ -865,6 +864,8 @@ def run_one(
 ) -> Tuple[dict, List[dict], List[dict], List[dict]]:
     spec.raw_dir.mkdir(parents=True, exist_ok=True)
     cfg = load_config(spec.config_path)
+    effective_keep_raw = keep_raw or defer_extraction
+    effective_no_run_logs = no_run_logs and not defer_extraction
 
     env = os.environ.copy()
     env["OMP_NUM_THREADS"] = str(spec.threads)
@@ -878,7 +879,7 @@ def run_one(
     result = run_process(command, cwd=PICM_ROOT, env=env)
     wall_time = time.perf_counter() - start
 
-    if not no_run_logs or result.returncode != 0:
+    if not effective_no_run_logs or result.returncode != 0:
         spec.run_dir.mkdir(parents=True, exist_ok=True)
         (spec.run_dir / "stdout.log").write_text(result.stdout)
         (spec.run_dir / "stderr.log").write_text(result.stderr)
@@ -890,31 +891,37 @@ def run_one(
     extraction_errors = []
     try:
         if result.returncode == 0:
-            try:
-                kinetic_rows = extract_kinetic_energy(spec, cfg)
-            except Exception as exc:
-                extraction_errors.append(f"kinetic energy: {exc}")
-                print(f"[warn] {spec.name}: could not extract kinetic energy: {exc}")
-            if analysis in ("vorticity", "ppc"):
+            if defer_extraction:
+                print(
+                    f"[defer] {spec.name}: raw output kept for later "
+                    "--extract-only post-processing"
+                )
+            else:
                 try:
-                    vorticity_rows, vorticity_frames = extract_vorticity(spec, cfg)
-                    if write_images:
-                        save_vorticity_images(spec, vorticity_frames, img_root, image_formats)
+                    kinetic_rows = extract_kinetic_energy(spec, cfg)
                 except Exception as exc:
-                    extraction_errors.append(f"vorticity: {exc}")
-                    print(f"[warn] {spec.name}: could not extract vorticity: {exc}")
+                    extraction_errors.append(f"kinetic energy: {exc}")
+                    print(f"[warn] {spec.name}: could not extract kinetic energy: {exc}")
+                if analysis in ("vorticity", "ppc"):
+                    try:
+                        vorticity_rows, vorticity_frames = extract_vorticity(spec, cfg)
+                        if write_images:
+                            save_vorticity_images(spec, vorticity_frames, img_root, image_formats)
+                    except Exception as exc:
+                        extraction_errors.append(f"vorticity: {exc}")
+                        print(f"[warn] {spec.name}: could not extract vorticity: {exc}")
             div_rows = parse_max_div(spec, combined, cfg)
-            if should_make_video(spec, video_options):
+            if not defer_extraction and should_make_video(spec, video_options):
                 write_particle_video(spec, video_options)
     finally:
-        if not keep_raw and not extraction_errors and spec.raw_dir.exists():
+        if not effective_keep_raw and not extraction_errors and spec.raw_dir.exists():
             shutil.rmtree(spec.raw_dir)
-        if no_run_logs and spec.run_dir.exists():
+        if effective_no_run_logs and spec.run_dir.exists():
             try:
                 spec.run_dir.rmdir()
             except OSError:
                 pass
-        if no_run_logs:
+        if effective_no_run_logs:
             for directory in (spec.run_dir.parent, spec.run_dir.parent.parent):
                 try:
                     directory.rmdir()
@@ -922,8 +929,20 @@ def run_one(
                     pass
 
     done_time = parse_done_time(combined)
+    if result.returncode != 0:
+        status = "failed"
+        error = ""
+    elif defer_extraction:
+        status = "raw_pending"
+        error = "analysis extraction deferred; raw data kept for --extract-only"
+    elif extraction_errors:
+        status = "failed"
+        error = "; ".join(extraction_errors)
+    else:
+        status = "ok"
+        error = ""
     summary = merge_row(base_row(spec), {
-        "status": "ok" if result.returncode == 0 and not extraction_errors else "failed",
+        "status": status,
         "returncode": result.returncode,
         "wall_time_s": wall_time,
         "reported_time_s": done_time if done_time is not None else "",
@@ -937,7 +956,7 @@ def run_one(
         "final_max_abs_vorticity": vorticity_rows[-1]["max_abs_vorticity"] if vorticity_rows else "",
         "max_div": max((row["max_div"] for row in div_rows), default=""),
         "config": str(spec.config_path),
-        "error": "; ".join(extraction_errors),
+        "error": error,
     })
     if result.returncode != 0:
         print(f"[fail] {spec.name} exited with {result.returncode}")
@@ -1471,11 +1490,8 @@ def plot_metric_series(
         mark_no_data(ax, title, missing_message)
         return False
 
-    ax.set_xlabel("Time t [s]")
-    ax.set_ylabel(y_label)
-    ax.set_title(title)
-    ax.grid(True, alpha=0.3)
-    ax.legend(ncol=legend_columns)
+    style_ax(ax, xlabel="Time $t$ [s]", ylabel=y_label, title=title)
+    style_legend(ax, many_threshold=4, max_columns=legend_columns)
     return True
 
 
@@ -1494,7 +1510,7 @@ def plot_method_metric_for_ppc(
     if not metric_rows:
         return False
 
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    fig, ax = plt.subplots()
     ok = plot_metric_series(
         ax,
         metric_rows,
@@ -1538,12 +1554,9 @@ def _ppc_errbar(
     xs = sorted(groups)
     ys = [mean(groups[ppc]) for ppc in xs]
     yerr = [std(groups[ppc]) for ppc in xs]
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.errorbar(xs, ys, yerr=yerr, fmt="o-", capsize=4, color="#1f77b4")
-    ax.set_xlabel("Particles per cell (ppcx = ppcy)")
-    ax.set_ylabel(y_label)
-    ax.set_title(title)
-    ax.grid(True, alpha=0.3)
+    fig, ax = plt.subplots()
+    ax.errorbar(xs, ys, yerr=yerr, fmt="o-", capsize=5, color=PALETTE["blue"])
+    style_ax(ax, xlabel="Particles per cell (ppcx = ppcy)", ylabel=y_label, title=title)
     fig.tight_layout()
     save_figure(fig, out_stem, formats=image_formats)
     plt.close(fig)
@@ -1644,6 +1657,16 @@ def main() -> int:
         default=int(os.environ.get("BUILD_JOBS", str(scheduler_threads()))),
     )
     parser.add_argument("--keep-raw", action="store_true")
+    parser.add_argument(
+        "--defer-extraction",
+        action="store_true",
+        default=os.environ.get("PICM_DEFER_EXTRACTION", "").lower()
+        in ("1", "true", "yes", "on"),
+        help=(
+            "run simulations only, keep raw output/logs, and leave CSV metrics "
+            "for a later --extract-only run"
+        ),
+    )
     parser.add_argument("--plot-only", action="store_true")
     parser.add_argument(
         "--extract-only",
@@ -1721,6 +1744,12 @@ def main() -> int:
         return extract_from_raw(specs, args)
 
     binary = build_binary(args.skip_build, args.build_jobs, args.build_dir)
+    defer_extraction = args.defer_extraction
+    if np is None and not defer_extraction:
+        defer_extraction = True
+        print("[defer] numpy is not available; keeping raw output for later extraction")
+    if defer_extraction and args.make_videos:
+        print("[defer] video encoding is skipped while extraction is deferred")
     video_options = VideoOptions(
         enabled=args.make_videos,
         methods=args.video_methods,
@@ -1776,6 +1805,7 @@ def main() -> int:
             spec,
             binary,
             args.keep_raw,
+            defer_extraction,
             args.analysis,
             args.no_run_logs,
             not args.no_plots,
@@ -1787,7 +1817,7 @@ def main() -> int:
         ke_rows.extend(ke)
         div_rows.extend(div)
         vorticity_rows.extend(vort)
-        if summary["status"] != "ok":
+        if summary["status"] == "failed":
             failures += 1
         checkpoint(args.out, summary_rows, ke_rows, div_rows, vorticity_rows)
         save_comparison_summary(summary_rows, args.out)

@@ -48,6 +48,7 @@ make sbatch
 make postpro
 make plot
 make postpro-run
+make postpro-extract
 make video
 make clean
 ```
@@ -59,6 +60,7 @@ make -C PostPro build
 make -C PostPro sbatch
 make -C PostPro postpro
 make -C PostPro plot
+make -C PostPro postpro-extract
 make -C PostPro free-fall-particles
 make -C PostPro video
 make -C PostPro clean
@@ -71,12 +73,16 @@ make -C PostPro clean
 - `make postpro` regenerates derived CSV files from `data/`.
 - `make plot` writes energy/vorticity comparison figures into `img/` in
   `png`, `svg`, `pdf`, and `jpg` formats.
+- `make postpro-extract` rebuilds report CSV metrics and plots from raw
+  simulation output already saved under `data/misc/`. This is the laptop-side
+  step to run after a cluster job deferred extraction because `numpy` was not
+  available there.
 - `make postpro-run` builds PICM, runs the selected report simulations, and
   extracts CSV data/plots. By default it is a low-CPU local smoke run: PIC and
   pure FLIP only, one OpenMP thread.
 - `make free-fall-particles` runs the no-water falling-block particle study
   and compares particle vertical velocity percentiles against `v_th = v0 + g t`.
-- `make video` recursively scans `test/PIC`, `test/FLIP`, and `test/APIC`,
+- `make video` recursively scans `test/PIC/extra`, `test/FLIP`, and `test/APIC`,
   runs every JSON with `write_particles: true`, and writes one white-background
   `viridis` MP4 per config under `video/` using the same directory structure.
   Existing MP4 files are regenerated. Encoding uses automatic FFmpeg encoder
@@ -115,6 +121,25 @@ Low-CPU local comparison:
 make -C PostPro postpro-run
 POSTPRO_RUN_METHODS=apic,flip,pic POSTPRO_RUN_FLIP_COEF=0.1,0.05 make -C PostPro postpro-run
 make -C PostPro free-fall-particles
+```
+
+Deferred extraction workflow:
+
+```bash
+# On the cluster, report jobs automatically keep raw output and finish with
+# status=raw_pending when numpy is unavailable.
+make -C PostPro sbatch
+
+# After copying PostPro/data from the cluster to the laptop, extract the saved
+# vorticity study raw output with local numpy.
+make -C PostPro postpro-extract
+```
+
+For other report studies, override the target variables, for example:
+
+```bash
+cd PostPro
+POSTPRO_EXTRACT_ANALYSIS=energy POSTPRO_EXTRACT_OUT=data/study_energy POSTPRO_EXTRACT_MISC=data/misc/study_energy POSTPRO_EXTRACT_IMG=img/study_energy make postpro-extract
 ```
 
 ## Data and Image Overrides

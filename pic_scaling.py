@@ -15,10 +15,10 @@ from typing import Iterable, List, NamedTuple, Tuple
 
 import report_compare as rc
 from picm_postpro.paths import DATA_DIR, PICM_ROOT, default_img_dir, default_misc_dir
-from picm_postpro.plots import parse_formats, save_figure
+from picm_postpro.plots import parse_formats, save_figure, style_ax, style_legend
 
 DEFAULT_OUT = DATA_DIR / "study_pic_scaling"
-DEFAULT_CONFIG = PICM_ROOT / "test" / "PIC" / "freeFallInWater.json"
+DEFAULT_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json"
 
 
 class ScalingSpec(NamedTuple):
@@ -307,10 +307,9 @@ def plot_scaling(
     rows = read_csv(out_root / "scaling.csv")
     if not rows:
         return
-    plot_dir = img_root
-    plot_dir.mkdir(parents=True, exist_ok=True)
+    img_root.mkdir(parents=True, exist_ok=True)
     for study in ("strong", "weak"):
-        fig, ax = rc.plt.subplots(figsize=(8, 5))
+        fig, ax = rc.plt.subplots()
         any_group = False
         for binding in sorted({row["binding"] for row in rows if row.get("study") == study}):
             group = [row for row in rows if row.get("study") == study and row.get("binding") == binding]
@@ -320,17 +319,15 @@ def plot_scaling(
             group.sort(key=lambda row: int(row["threads"]))
             threads = [int(row["threads"]) for row in group]
             wall_time = [float(row["wall_time_s"]) for row in group]
-            ax.plot(threads, wall_time, "o-", label=f"{binding}")
+            ax.plot(threads, wall_time, "o-", label=binding)
         if not any_group:
             rc.plt.close(fig)
             continue
-        ax.set_xlabel("OpenMP threads")
-        ax.set_ylabel("Simulation wall time [s]")
-        ax.set_title(f"PIC {study} scaling")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
+        style_ax(ax, xlabel="OpenMP threads", ylabel="Wall time [s]",
+                 title=f"PIC {study} scaling")
+        style_legend(ax)
         fig.tight_layout()
-        save_figure(fig, plot_dir / study, formats=image_formats)
+        save_figure(fig, img_root / study, formats=image_formats)
         rc.plt.close(fig)
 
 

@@ -50,7 +50,7 @@ IMG_ROOT="${PICM_POSTPRO_IMG:-$PICM_POSTPRO_ROOT/img}"
 OUT="${PICM_STUDY_OUT:-$DATA_ROOT/study_pic_scaling}"
 MISC_OUT="${PICM_STUDY_MISC:-$MISC_ROOT/study_pic_scaling}"
 IMG_OUT="${PICM_STUDY_IMG:-$IMG_ROOT/study_pic_scaling}"
-CONFIG="${PICM_SCALING_CONFIG:-$PICM_ROOT/test/PIC/freeFallInWater.json}"
+CONFIG="${PICM_SCALING_CONFIG:-$PICM_ROOT/test/PIC/extra/freeFallInWater.json}"
 
 EXTRA_ARGS=(--skip-build --force)
 [[ "${PICM_KEEP_RAW:-0}" == "1" ]] && EXTRA_ARGS+=(--keep-raw)

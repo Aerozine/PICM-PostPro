@@ -18,7 +18,7 @@ from picm_postpro.paths import MISC_DIR, PICM_ROOT, VIDEO_DIR
 
 
 DEFAULT_CONFIG_ROOTS = (
-    PICM_ROOT / "test" / "PIC",
+    PICM_ROOT / "test" / "PIC" / "extra",
     PICM_ROOT / "test" / "FLIP",
     PICM_ROOT / "test" / "APIC",
 )

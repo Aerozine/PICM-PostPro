@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from picm_postpro.paths import DATA_DIR, PICM_ROOT, default_img_dir, default_misc_dir
-from picm_postpro.plots import parse_formats, save_figure
+from picm_postpro.plots import parse_formats, save_figure, PALETTE, style_ax, style_legend
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/picm_matplotlib")
 
@@ -49,7 +49,6 @@ def first_existing_path(*paths: Path) -> Path:
 
 
 DEFAULT_CONFIG = first_existing_path(
-    PICM_ROOT / "test" / "PIC" / "freeFall.json",
     PICM_ROOT / "test" / "PIC" / "extra" / "freeFall.json",
 )
 
@@ -313,11 +312,13 @@ def read_csv(path: Path) -> List[dict]:
 
 def method_color(method: str, flip_coef_pic) -> str:
     if method == "pic":
-        return "#1f77b4"
+        return PALETTE["blue"]
     if method == "apic":
-        return "#2ca02c"
-    coef = "" if flip_coef_pic in ("", None) else f" {float(flip_coef_pic):g}"
-    return "#ff7f0e" if not coef or abs(float(flip_coef_pic)) < 1e-14 else "#9467bd"
+        return PALETTE["green"]
+    coef = flip_coef_pic
+    if coef in ("", None) or abs(float(coef)) < 1e-14:
+        return PALETTE["orange"]
+    return PALETTE["purple"]
 
 
 def method_label(method: str, flip_coef_pic) -> str:
@@ -337,8 +338,8 @@ def plot_rows(rows: List[dict], img_dir: Path, image_formats: Iterable[str]) -> 
     if not rows:
         raise RuntimeError("no free-fall rows to plot")
 
-    img_dir.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(10, 5.5))
+    err_color = PALETTE["pink"]
+    fig, ax = plt.subplots()
     residual_ax = ax.twinx()
 
     theory_times = sorted({float(row["time"]) for row in rows})
@@ -347,11 +348,11 @@ def plot_rows(rows: List[dict], img_dir: Path, image_formats: Iterable[str]) -> 
         theory_by_time.setdefault(float(row["time"]), []).append(float(row["v_theory"]))
     ax.plot(
         theory_times,
-        [sum(theory_by_time[time]) / len(theory_by_time[time]) for time in theory_times],
-        color="#111111",
-        lw=2.0,
+        [sum(theory_by_time[t]) / len(theory_by_time[t]) for t in theory_times],
+        color="black",
+        lw=2.2,
         linestyle="--",
-        label="v_th = v0 + g t",
+        label=r"$v_{th} = v_0 + g\,t$",
     )
 
     groups: Dict[tuple, List[dict]] = {}
@@ -363,29 +364,26 @@ def plot_rows(rows: List[dict], img_dir: Path, image_formats: Iterable[str]) -> 
         times = [float(row["time"]) for row in group]
         theory = [float(row["v_theory"]) for row in group]
         median = [float(row["v_median"]) for row in group]
-        median_error = [value - ref for value, ref in zip(median, theory)]
+        median_error = [v - ref for v, ref in zip(median, theory)]
         color = method_color(method, coef)
         label = method_label(method, coef)
-        ax.plot(times, median, color=color, lw=1.8, label=f"{label} median")
-        residual_ax.plot(
-            times,
-            median_error,
-            color="#d62728",
-            lw=1.4,
-            linestyle="-.",
-            label=f"{label} median - v_th",
-        )
+        ax.plot(times, median, color=color, label=f"{label} median")
+        residual_ax.plot(times, median_error, color=err_color,
+                         linestyle="-.", label=f"{label} error")
 
-    ax.set_xlabel("Time t [s]")
-    ax.set_ylabel("Downward particle velocity")
-    residual_ax.set_ylabel("Observed - theory", color="#d62728")
-    residual_ax.tick_params(axis="y", colors="#d62728")
-    residual_ax.axhline(0.0, color="#d62728", lw=0.8, alpha=0.35)
-    ax.set_title("No-water falling block: particle velocity versus theory")
-    ax.grid(True, alpha=0.3)
+    style_ax(ax, xlabel="Time $t$ [s]", ylabel="Downward particle velocity",
+             title="Free fall: particle velocity vs theory")
+    residual_ax.set_ylabel("Observed $-$ theory", color=err_color)
+    residual_ax.tick_params(axis="y", colors=err_color)
+    residual_ax.axhline(0.0, color=err_color, lw=0.8, alpha=0.4)
+
     handles, labels = ax.get_legend_handles_labels()
-    residual_handles, residual_labels = residual_ax.get_legend_handles_labels()
-    ax.legend(handles + residual_handles, labels + residual_labels, ncol=2)
+    res_handles, res_labels = residual_ax.get_legend_handles_labels()
+    style_legend(ax, many_threshold=99)  # suppress auto-legend; build manually below
+    ax.get_legend().remove() if ax.get_legend() else None
+    ax.legend(handles + res_handles, labels + res_labels, ncol=2,
+              loc="lower center", bbox_to_anchor=(0.5, 1.02), borderaxespad=0.0)
+
     fig.tight_layout()
     fig.subplots_adjust(right=0.86)
     out_base = img_dir / "velocity" / "velocityL2"
@@ -425,7 +423,7 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--misc-dir", type=Path)
-    parser.add_argument("--img-dir", type=Path, default=IMG_DIR)
+    parser.add_argument("--img-dir", type=Path)
     parser.add_argument("--image-formats", default="png,pdf")
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-local-report-release")
     parser.add_argument("--build-jobs", type=int, default=1)
@@ -439,7 +437,7 @@ def main() -> int:
 
     args.out = args.out.resolve()
     args.misc_dir = (args.misc_dir or default_misc_dir(args.out)).resolve()
-    args.img_dir = args.img_dir.resolve()
+    args.img_dir = (args.img_dir or default_img_dir(args.out)).resolve()
     image_formats = parse_formats(args.image_formats)
     if args.plot_only:
         rows = read_csv(args.out / "particle_velocity.csv")

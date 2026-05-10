@@ -15,9 +15,9 @@ from typing import List, NamedTuple, Tuple
 
 import report_compare as rc
 from picm_postpro.paths import DATA_DIR, PICM_ROOT, default_img_dir, default_misc_dir
-from picm_postpro.plots import parse_formats, save_figure
+from picm_postpro.plots import parse_formats, save_figure, style_ax, style_legend
 
-DEFAULT_CONFIG = PICM_ROOT / "test" / "PIC" / "dambreak.json"
+DEFAULT_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "dambreak.json"
 DEFAULT_OUT = DATA_DIR / "study_iterative_solvers"
 CPU_SOLVERS = ("jacobi", "gauss_seidel", "red_black_gauss_seidel", "miccg0", "cg")
 
@@ -327,23 +327,22 @@ def plot_iterations(
     if not grouped:
         return
 
-    fig, ax = rc.plt.subplots(figsize=(10, 5))
+    fig, ax = rc.plt.subplots()
     for solver in sorted(grouped, key=lambda n: CPU_SOLVERS.index(n) if n in CPU_SOLVERS else 99):
         time_map = grouped[solver]
         xs = sorted(time_map)
         ys = [rc.mean(time_map[x]) for x in xs]
-        ax.plot(xs, ys, lw=1.5, label=solver)
+        ax.plot(xs, ys, label=solver)
 
     all_vals = [v for tm in grouped.values() for vals in tm.values() for v in vals]
     pos_vals = [v for v in all_vals if v > 0]
     if pos_vals and max(all_vals) / min(pos_vals) > 50:
         ax.set_yscale("log")
 
-    ax.set_xlabel("Time $t$ [s]" if has_time else "Pressure solve index")
-    ax.set_ylabel("Iterations per pressure solve")
-    ax.set_title(f"Pressure solver iterations over time (tol={tolerance})")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
+    xlabel = "Time $t$ [s]" if has_time else "Pressure solve index"
+    style_ax(ax, xlabel=xlabel, ylabel="Iterations per pressure solve",
+             title=f"Pressure solver iterations (tol={tolerance})")
+    style_legend(ax)
     fig.tight_layout()
     save_figure(fig, img_root / "iterative", formats=image_formats)
     rc.plt.close(fig)
