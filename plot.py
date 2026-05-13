@@ -310,20 +310,6 @@ def _plot_ppc(
         return
 
     from collections import defaultdict
-    # Group by (method, flip_coef, ppc)
-    groups: Dict[tuple, list] = defaultdict(list)
-    for row in rows:
-        if row.get("status") != "ok":
-            continue
-        val = _try_float(row.get(col))
-        ppc = _try_float(row.get("ppc"))
-        if val is None or ppc is None:
-            continue
-        method = row.get("method", "pic")
-        coef = row.get("flip_coef", None)
-        groups[(method, coef)].setdefault(int(ppc), []).append(val)
-
-    # Rebuild for easier handling
     series_data: Dict[tuple, dict] = {}
     for row in rows:
         if row.get("status") != "ok":
