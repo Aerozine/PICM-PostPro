@@ -51,6 +51,10 @@ def _run_name(method: str, ppc: int, flip_coef: Optional[float], threads: int) -
     return name
 
 
+def _sample_time(sample_i: int, dt: float, sampling_rate: int) -> float:
+    return float(sample_i) * float(dt) * float(sampling_rate)
+
+
 def _build_config(
     base: dict,
     method: str,
@@ -134,6 +138,8 @@ def _extract_wake_point(
     pvd_path: Path,
     nx: int,
     ny: int,
+    dt: float,
+    sampling_rate: int,
 ) -> List[dict]:
     """
     Sample normVelocity at grid cell (nx//2, ny//4) from each VTI frame.
@@ -150,7 +156,7 @@ def _extract_wake_point(
 
     rows = []
     for sample_i, dataset in enumerate(tree.getroot().iter("DataSet")):
-        t = float(dataset.get("timestep", sample_i))
+        t = _sample_time(sample_i, dt, sampling_rate)
         fpath = pvd_path.parent / dataset.get("file", "")
         if not fpath.exists():
             continue
@@ -184,7 +190,7 @@ def main() -> int:
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-release")
     parser.add_argument("--build-jobs", type=int, default=None)
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--keep-raw", action="store_true")
+    parser.add_argument("--keep-raw", "--raw", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -213,6 +219,7 @@ def main() -> int:
     nx = int(base_config.get("nx", 160))
     ny = int(base_config.get("ny", 80))
     nt = args.nt if args.nt is not None else int(base_config.get("nt", 1000))
+    dt = float(base_config.get("dt", 0.01))
     sampling_rate = max(1, nt // args.samples)
 
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
@@ -234,12 +241,14 @@ def main() -> int:
     runs_dir = out_dir / "runs"
 
     for name, method, coef in run_specs:
-        if not args.force and name in completed:
-            print(f"[skip] {name}")
-            continue
-
         run_dir = runs_dir / name
         raw_dir = run_dir / "raw"
+
+        if not args.force and name in completed:
+            if not args.keep_raw or raw_dir.exists():
+                print(f"[skip] {name}")
+                continue
+            print(f"[rerun] {name} (raw output missing)")
 
         config = _build_config(
             base_config, method, args.ppc, coef,
@@ -257,7 +266,7 @@ def main() -> int:
 
         # Extract wake-point data
         pvd_path = raw_dir / "normVelocity.pvd"
-        rows = _extract_wake_point(pvd_path, nx, ny)
+        rows = _extract_wake_point(pvd_path, nx, ny, dt, sampling_rate)
 
         if not rows:
             print(f"[warn] no data extracted for {name}")

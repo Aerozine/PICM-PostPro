@@ -24,11 +24,11 @@ except ImportError:
 from picm_postpro.paths import DATA_DIR, PICM_ROOT
 from picm_postpro.core import (
     build_binary,
-    parse_pvd,
     read_csv,
     read_vtp_point_array,
     read_vtp_point_count,
     run_binary,
+    scheduler_threads,
     write_csv,
 )
 
@@ -52,6 +52,10 @@ def _run_name(study: str, method: str, ppc: int, flip_coef: Optional[float], thr
         name += f"_coefpic{flip_coef:g}"
     name += f"_t{threads}"
     return name
+
+
+def _sample_time(sample_i: int, dt: float, sampling_rate: int) -> float:
+    return float(sample_i) * float(dt) * float(sampling_rate)
 
 
 def _build_config(
@@ -135,6 +139,8 @@ def _extract_air_velocity(
     pvd_path: Path,
     gravity: float,
     v0: float,
+    dt: float,
+    sampling_rate: int,
 ) -> List[dict]:
     """Extract per-frame velocity statistics from particles.pvd (air study)."""
     if not pvd_path.exists():
@@ -144,7 +150,7 @@ def _extract_air_velocity(
     tree = ET.parse(pvd_path)
     rows = []
     for sample_i, dataset in enumerate(tree.getroot().iter("DataSet")):
-        t = float(dataset.get("timestep", sample_i))
+        t = _sample_time(sample_i, dt, sampling_rate)
         fpath = pvd_path.parent / dataset.get("file", "")
         if not fpath.exists():
             continue
@@ -174,7 +180,7 @@ def _extract_air_velocity(
                 v_p05 = float(np.percentile(vy_fin, 5))
                 v_p95 = float(np.percentile(vy_fin, 95))
 
-        v_theory = v0 + gravity * t
+        v_theory = v0 - gravity * t
         rows.append({
             "sample": sample_i,
             "step": sample_i,
@@ -194,7 +200,14 @@ def _extract_air_velocity(
 # Water study extraction
 # ---------------------------------------------------------------------------
 
-def _extract_water_counts(pvd_path: Path, dx: float, dy: float, ppc: int) -> List[dict]:
+def _extract_water_counts(
+    pvd_path: Path,
+    dx: float,
+    dy: float,
+    ppc: int,
+    dt: float,
+    sampling_rate: int,
+) -> List[dict]:
     """Extract particle count and volume from particles.pvd."""
     if not pvd_path.exists():
         return []
@@ -204,7 +217,7 @@ def _extract_water_counts(pvd_path: Path, dx: float, dy: float, ppc: int) -> Lis
     volume_per_particle = dx * dy / (ppc * ppc)
     rows = []
     for sample_i, dataset in enumerate(tree.getroot().iter("DataSet")):
-        t = float(dataset.get("timestep", sample_i))
+        t = _sample_time(sample_i, dt, sampling_rate)
         fpath = pvd_path.parent / dataset.get("file", "")
         if not fpath.exists():
             continue
@@ -239,13 +252,15 @@ def main() -> int:
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-release")
     parser.add_argument("--build-jobs", type=int, default=None)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--keep-raw", "--raw", action="store_true",
+                        help="keep raw VTP output after CSV extraction")
     parser.add_argument("--skip-air", action="store_true")
     parser.add_argument("--skip-water", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    threads = args.threads if args.threads is not None else 1
-    build_jobs = args.build_jobs if args.build_jobs is not None else 1
+    threads = args.threads if args.threads is not None else scheduler_threads()
+    build_jobs = args.build_jobs if args.build_jobs is not None else scheduler_threads()
     out_dir = args.out if args.out is not None else DATA_DIR / "free_fall"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -278,6 +293,7 @@ def main() -> int:
             gravity = float(air_base.get("gravity", GRAVITY))
             dx = float(air_base.get("dx", 0.05))
             dy = float(air_base.get("dy", 0.05))
+            dt = float(air_base.get("dt", 0.01))
             v0 = 0.0  # initial downward velocity
 
             completed_air = {r["run"] for r in vel_rows if r.get("run", "").startswith("air_")}
@@ -286,12 +302,15 @@ def main() -> int:
                 coef = args.flip_coef if method == "flip" else None
                 name = _run_name("air", method, args.ppc, coef, threads)
 
-                if not args.force and name in completed_air:
-                    print(f"[skip] {name}")
-                    continue
-
                 run_dir = runs_dir / name
                 raw_dir = run_dir / "raw"
+
+                if not args.force and name in completed_air:
+                    if not args.keep_raw or raw_dir.exists():
+                        print(f"[skip] {name}")
+                        continue
+                    print(f"[rerun] {name} (raw output missing)")
+
                 config = _build_config(
                     air_base, method, args.ppc, coef,
                     raw_dir, args.nt_air, args.sampling_rate,
@@ -309,7 +328,9 @@ def main() -> int:
 
                 # Extract velocity data
                 part_pvd = raw_dir / "particles.pvd"
-                extracted = _extract_air_velocity(part_pvd, gravity, v0)
+                extracted = _extract_air_velocity(
+                    part_pvd, gravity, v0, dt, args.sampling_rate
+                )
 
                 # Remove old rows for this run and append new
                 vel_rows = [r for r in vel_rows if r.get("run") != name]
@@ -325,7 +346,7 @@ def main() -> int:
                 write_csv(vel_csv, vel_rows)
 
                 # Cleanup raw
-                if raw_dir.exists():
+                if not args.keep_raw and raw_dir.exists():
                     shutil.rmtree(raw_dir)
 
     # -----------------------------------------------------------------------
@@ -340,6 +361,7 @@ def main() -> int:
 
             dx = float(water_base.get("dx", 0.05))
             dy = float(water_base.get("dy", 0.05))
+            dt = float(water_base.get("dt", 0.01))
 
             completed_water = {r["run"] for r in part_rows if r.get("run", "").startswith("water_")}
 
@@ -347,12 +369,15 @@ def main() -> int:
                 coef = args.flip_coef if method == "flip" else None
                 name = _run_name("water", method, args.ppc, coef, threads)
 
-                if not args.force and name in completed_water:
-                    print(f"[skip] {name}")
-                    continue
-
                 run_dir = runs_dir / name
                 raw_dir = run_dir / "raw"
+
+                if not args.force and name in completed_water:
+                    if not args.keep_raw or raw_dir.exists():
+                        print(f"[skip] {name}")
+                        continue
+                    print(f"[rerun] {name} (raw output missing)")
+
                 config = _build_config(
                     water_base, method, args.ppc, coef,
                     raw_dir, args.nt_water, args.sampling_rate,
@@ -370,7 +395,9 @@ def main() -> int:
 
                 # Extract particle count / volume data
                 part_pvd = raw_dir / "particles.pvd"
-                extracted = _extract_water_counts(part_pvd, dx, dy, args.ppc)
+                extracted = _extract_water_counts(
+                    part_pvd, dx, dy, args.ppc, dt, args.sampling_rate
+                )
 
                 # Remove old rows and append new
                 part_rows = [r for r in part_rows if r.get("run") != name]
@@ -386,7 +413,7 @@ def main() -> int:
                 write_csv(part_csv, part_rows)
 
                 # Cleanup raw
-                if raw_dir.exists():
+                if not args.keep_raw and raw_dir.exists():
                     shutil.rmtree(raw_dir)
 
     print(f"[done] results in {out_dir}")

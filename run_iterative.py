@@ -73,7 +73,7 @@ def main() -> int:
     parser.add_argument("--solvers", default=",".join(DEFAULT_SOLVERS),
                         help="comma-separated solver names")
     parser.add_argument("--tolerance", type=float, default=1e-4)
-    parser.add_argument("--threads", type=int, default=1)
+    parser.add_argument("--threads", type=int, default=None)
     parser.add_argument("--nt", type=int, default=200)
     parser.add_argument("--ppc", type=int, default=3)
     parser.add_argument("--max-iterations", type=int, default=5000)
@@ -87,6 +87,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    threads = args.threads if args.threads is not None else scheduler_threads()
     build_jobs = args.build_jobs if args.build_jobs is not None else scheduler_threads()
     out_dir = args.out if args.out is not None else DATA_DIR / "iterative"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +122,7 @@ def main() -> int:
 
     for solver in solvers:
         for repeat in range(1, args.repeats + 1):
-            name = _run_name(solver, args.tolerance, args.threads, repeat)
+            name = _run_name(solver, args.tolerance, threads, repeat)
 
             if not args.force and name in completed:
                 print(f"[skip] {name}")
@@ -162,9 +163,9 @@ def main() -> int:
                 print(f"[dry-run] {name}")
                 continue
 
-            env = {"OMP_NUM_THREADS": str(args.threads)}
+            env = {"OMP_NUM_THREADS": str(threads)}
             cmd = [str(binary), str(config_out)]
-            print(f"[run] {name}")
+            print(f"[run] {name} (threads={threads})")
             t0 = time.perf_counter()
             result = run_binary(cmd, env)
             wall = time.perf_counter() - t0
@@ -193,6 +194,7 @@ def main() -> int:
                 iter_rows.append({
                     "solver": solver,
                     "tolerance": args.tolerance,
+                    "threads": threads,
                     "run": name,
                     "step": row["step"],
                     "iterations": row["iterations"],

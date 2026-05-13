@@ -2,7 +2,7 @@
 #SBATCH --job-name=picm-iterative
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=32
 #SBATCH --hint=nomultithread
 #SBATCH --mem=4G
 #SBATCH --time=02:00:00
@@ -26,7 +26,7 @@ echo "[iterative] data:           $DATA_DIR/iterative"
 cd "$PICM_POSTPRO_ROOT"
 exec "$PYTHON_BIN" run_iterative.py \
   --binary "$DEBUG_BUILD_DIR/bin/PIC" \
-  --threads 1 \
+  --threads "${SLURM_CPUS_PER_TASK:-32}" \
   --out "$DATA_DIR/iterative" \
   --force \
   "$@"

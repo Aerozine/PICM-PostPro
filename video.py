@@ -48,15 +48,20 @@ def _is_sim_config(path: Path) -> bool:
 
 
 def _config_name(config_path: Path) -> str:
-    """Generate a short name from a config path."""
+    """Generate a short name from a config path, preserving folder structure."""
     # Try to make a unique name relative to PICM_ROOT
     try:
         rel = config_path.relative_to(PICM_ROOT)
         parts = list(rel.parts)
-        # Drop 'test', leading dirs, keep meaningful stem
-        name_parts = [p for p in parts[:-1] if p not in ("test", "PIC", "FLIP", "APIC", "extra")]
-        name_parts.append(config_path.stem)
-        return "_".join(name_parts) if name_parts else config_path.stem
+        # Strip 'test' directory but keep everything else (APIC/FLIP/etc. and extra subfolders).
+        # Example: test/APIC/extra/dambreak.json -> APIC/extra/dambreak.mp4
+        name_parts = [p for p in parts if p != "test"]
+        # Remove filename from parts list, use only directory components + stem
+        dir_path = "/".join(name_parts[:-1])
+        if dir_path:
+            return f"{dir_path}/{config_path.stem}"
+        else:
+            return config_path.stem
     except ValueError:
         return config_path.stem
 
@@ -148,6 +153,7 @@ def main() -> int:
             continue
 
         mp4_path = out_dir / f"{name}.mp4"
+        mp4_path.parent.mkdir(parents=True, exist_ok=True)
 
         if args.dry_run:
             print(f"[video] dry-run: would process {config_path} -> {mp4_path}")

@@ -74,6 +74,54 @@ def _load_or_warn(path: Path, name: str) -> Optional[List[dict]]:
     return rows
 
 
+def _read_report_summary(data_dir: Path) -> Dict[str, dict]:
+    return {r["run"]: r for r in read_csv(data_dir / "report" / "summary.csv")}
+
+
+def _primary_report_runs(summary: Dict[str, dict]) -> set:
+    """Keep the method-comparison runs out of historical mixed report/PPC CSVs."""
+    if not summary:
+        return set()
+
+    from collections import Counter
+    non_pic_ppcs = []
+    for row in summary.values():
+        ppc = _try_float(row.get("ppc"))
+        if row.get("status") == "ok" and row.get("method") != "pic" and ppc is not None:
+            non_pic_ppcs.append(int(ppc))
+    if not non_pic_ppcs:
+        return set(summary.keys())
+
+    primary_ppc = Counter(non_pic_ppcs).most_common(1)[0][0]
+    selected = set()
+    for run, row in summary.items():
+        if row.get("status") != "ok":
+            continue
+        ppc = _try_float(row.get("ppc"))
+        repeat = _try_float(row.get("repeat"))
+        if ppc is None or int(ppc) != primary_ppc:
+            continue
+        if repeat is not None and int(repeat) != 1:
+            continue
+        selected.add(run)
+    return selected or set(summary.keys())
+
+
+def _ppc_summary_rows(data_dir: Path) -> Optional[List[dict]]:
+    ppc_csv = data_dir / "ppc" / "summary.csv"
+    if ppc_csv.exists():
+        rows = _load_or_warn(ppc_csv, "ppc")
+        if rows is not None:
+            return rows
+
+    fallback = data_dir / "report" / "summary.csv"
+    rows = _load_or_warn(fallback, "ppc fallback")
+    if rows is None:
+        return None
+    print("[plot] ppc: using legacy data/report/summary.csv fallback")
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # Plot 1: Kinetic energy time series
 # ---------------------------------------------------------------------------
@@ -85,16 +133,17 @@ def plot_energy(data_dir: Path, img_dir: Path, formats: tuple) -> None:
         return
 
     # Group by run key (method + flip_coef combo)
-    # We need summary to get method/flip_coef per run
-    summary_csv = data_dir / "report" / "summary.csv"
-    summary = read_csv(summary_csv)
-    run_meta: Dict[str, dict] = {r["run"]: r for r in summary}
+    # We need summary to get method/flip_coef per run.
+    run_meta = _read_report_summary(data_dir)
+    allowed_runs = _primary_report_runs(run_meta)
 
     # Group rows by run
     from collections import defaultdict
     by_run: Dict[str, list] = defaultdict(list)
     for row in rows:
         run = row.get("run", "")
+        if allowed_runs and run not in allowed_runs:
+            continue
         t = _try_float(row.get("time"))
         ke = _try_float(row.get("kinetic_energy"))
         if t is not None and ke is not None:
@@ -133,14 +182,15 @@ def plot_vorticity(data_dir: Path, img_dir: Path, formats: tuple) -> None:
     if rows is None:
         return
 
-    summary_csv = data_dir / "report" / "summary.csv"
-    summary = read_csv(summary_csv)
-    run_meta: Dict[str, dict] = {r["run"]: r for r in summary}
+    run_meta = _read_report_summary(data_dir)
+    allowed_runs = _primary_report_runs(run_meta)
 
     from collections import defaultdict
     by_run: Dict[str, list] = defaultdict(list)
     for row in rows:
         run = row.get("run", "")
+        if allowed_runs and run not in allowed_runs:
+            continue
         t = _try_float(row.get("time"))
         vl2 = _try_float(row.get("vorticity_l2"))
         if t is not None and vl2 is not None:
@@ -221,10 +271,10 @@ def plot_velocity(data_dir: Path, img_dir: Path, formats: tuple) -> None:
         # Theory line (once)
         if not theory_plotted and v_th:
             ts_full = [d["t"] for d in data if d["v_theory"] is not None]
-            ax.plot(ts_full, v_th, "k--", linewidth=1.5, label=r"$v_0 + g\,t$")
+            ax.plot(ts_full, v_th, "k--", linewidth=1.5, label=r"$v_0 - g\,t$")
             theory_plotted = True
 
-    style_ax(ax, xlabel="Time [s]", ylabel="Particle velocity [m/s]",
+    style_ax(ax, xlabel="Time [s]", ylabel="Particle vertical velocity [m/s]",
              title="Free Fall: Velocity Validation")
     ax2.set_ylabel("Residual [m/s]")
     style_legend(ax)
@@ -304,8 +354,7 @@ def _plot_ppc(
     stem: str,
     title: str,
 ) -> None:
-    csv_path = data_dir / "report" / "summary.csv"
-    rows = _load_or_warn(csv_path, stem)
+    rows = _ppc_summary_rows(data_dir)
     if rows is None:
         return
 
@@ -388,14 +437,16 @@ def plot_iterative(data_dir: Path, img_dir: Path, formats: tuple) -> None:
 
     for row in rows:
         solver = row.get("solver", "unknown")
+        threads = row.get("threads", "")
+        label = f"{solver} ({threads} threads)" if threads not in ("", None) else solver
         step = _try_float(row.get("step"))
         iters = _try_float(row.get("iterations"))
         if step is None or iters is None:
             continue
         hit_max = str(row.get("hit_max", "False")).lower() in ("true", "1", "yes")
-        by_solver[solver].append((int(step), iters))
+        by_solver[label].append((int(step), iters))
         if hit_max:
-            hit_max_by_solver[solver].append((int(step), iters))
+            hit_max_by_solver[label].append((int(step), iters))
 
     if not by_solver:
         print("[plot] iterative: no data to plot")
@@ -497,20 +548,20 @@ def plot_scaling_weak(data_dir: Path, img_dir: Path, formats: tuple) -> None:
 def plot_velocity_methods(data_dir: Path, img_dir: Path, formats: tuple) -> None:
     """Velocity L2 vs time for every method variant — Strouhal-style comparison."""
     ke_csv = data_dir / "report" / "kinetic_energy.csv"
-    sum_csv = data_dir / "report" / "summary.csv"
     ke_rows = _load_or_warn(ke_csv, "methods/velocityMethods")
     if ke_rows is None:
         return
 
     from collections import defaultdict
-    run_meta: Dict[str, dict] = {}
-    for r in read_csv(sum_csv):
-        run_meta[r["run"]] = r
+    run_meta = _read_report_summary(data_dir)
+    allowed_runs = _primary_report_runs(run_meta)
 
     # Aggregate time → mean velocity_l2 per (method, flip_coef) key
     series: Dict[tuple, Dict[float, List[float]]] = defaultdict(lambda: defaultdict(list))
     for row in ke_rows:
         run = row.get("run", "")
+        if allowed_runs and run not in allowed_runs:
+            continue
         t = _try_float(row.get("time"))
         v = _try_float(row.get("velocity_l2"))
         if t is None or v is None:
@@ -855,254 +906,6 @@ def plot_rankine(data_dir: Path, img_dir: Path, formats: tuple) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Plot: Lamb-Oseen vortex — analytical viscosity comparison
-# ---------------------------------------------------------------------------
-
-# Lamb-Oseen config constants (must match test/PIC/extra/lamb-oseen-vortex.json)
-_LO_NU    = 0.002   # physical kinematic viscosity [m²/s]
-_LO_T0    = 20.0    # physical_time: simulation starts at this vortex age [s]
-_LO_OMEGA = 2.0     # angular velocity
-_LO_RC    = 0.4     # core_r in metres (20 cells × 0.02 m/cell)
-_LO_GAMMA = 2.0 * math.pi * _LO_OMEGA * _LO_RC ** 2  # circulation Γ
-
-
-def plot_lamb(data_dir: Path, img_dir: Path, formats: tuple) -> None:
-    """Two plots from lamb/:
-      lamb_sigma  — σ²(t) for each method vs exact Lamb-Oseen analytical curve
-      lamb_profile — u_θ(r) at t_final for each method vs analytical at t=0 and t_final
-    Analytical:
-      σ²(t_sim) = 4ν(t₀ + t_sim)
-      u_θ(r,t)  = (Γ/2πr)·(1 − exp(−r²/σ²(t)))
-    """
-    from collections import defaultdict
-    out_base = img_dir / "lamb"
-    out_base.mkdir(parents=True, exist_ok=True)
-
-    # ---- Plot 1 & 2: σ²(t) vs analytical ----
-    sig_csv  = data_dir / "lamb" / "sigma.csv"
-    sig_rows = _load_or_warn(sig_csv, "lamb/sigma")
-
-    if sig_rows is not None:
-        sig_series: Dict[tuple, list] = defaultdict(list)
-        for row in sig_rows:
-            t  = _try_float(row.get("time"))
-            sq = _try_float(row.get("sigma_sq"))
-            if t is None or sq is None:
-                continue
-            method   = row.get("method", "pic")
-            coef_val = _try_float(row.get("flip_coef"))
-            sig_series[(method, coef_val)].append((t, sq))
-
-        t_max = max(t for pts in sig_series.values() for t, _ in pts) if sig_series else 1.0
-        t_ana = np.linspace(0, t_max, 300)
-        sigma_sq_analytical = 4.0 * _LO_NU * (_LO_T0 + t_ana)
-
-        def _plot_sig(keys, stem, title):
-            keys = [k for k in keys if k in sig_series]
-            if not keys:
-                return
-            fig, ax = plt.subplots()
-            ax.plot(t_ana, sigma_sq_analytical, color="black", linestyle="--",
-                    linewidth=1.4,
-                    label=rf"Analytical $\sigma^2=4\nu(t_0+t)$, $\nu={_LO_NU}$",
-                    zorder=0)
-            for method, coef_val in keys:
-                pts = sorted(sig_series[(method, coef_val)], key=lambda x: x[0])
-                ts, sqs = zip(*pts)
-                ax.plot(ts, sqs, color=method_color(method, coef_val),
-                        label=method_label(method, coef_val), lw=1.8)
-            ax.set_xlim(0, t_max)
-            style_ax(ax,
-                     xlabel=r"Simulation time $t$ [s]",
-                     ylabel=r"$\sigma^2(t)$ [m²]",
-                     title=title)
-            style_legend(ax)
-            save_figure(fig, out_base / stem, formats=formats)
-            plt.close(fig)
-            print(f"[plot] wrote {out_base / stem}.*")
-
-        _plot_sig(
-            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
-             ("apic", None), ("apic", 0.0)],
-            "lamb_sigma_methods",
-            r"Lamb-Oseen vortex: $\sigma^2(t)$ — PIC / FLIP / APIC",
-        )
-        flip_sig_keys = sorted(
-            [(m, c) for (m, c) in sig_series if m == "flip" and c is not None and c > 1e-12],
-            key=lambda k: k[1],
-        )
-        _plot_sig(
-            flip_sig_keys,
-            "lamb_sigma_flip",
-            r"Lamb-Oseen vortex: $\sigma^2(t)$ — FLIP $\alpha$ variations",
-        )
-
-        # ---- Plot 3 & 4: μ(t) = σ²(t) / 4(t₀+t) — instantaneous effective viscosity ----
-        mu_series: Dict[tuple, list] = defaultdict(list)
-        for (key, pts) in sig_series.items():
-            for t, sq in pts:
-                denom = 4.0 * (_LO_T0 + t)
-                if denom > 1e-12:
-                    mu_series[key].append((t, sq / denom))
-
-        def _plot_mu(keys, stem, title):
-            keys = [k for k in keys if k in mu_series]
-            if not keys:
-                return
-            fig, ax = plt.subplots()
-            ax.axhline(_LO_NU, color="black", linestyle="--", linewidth=1.4,
-                       label=rf"Analytical $\nu = {_LO_NU}$ m²/s", zorder=0)
-            for method, coef_val in keys:
-                pts = sorted(mu_series[(method, coef_val)], key=lambda x: x[0])
-                ts, mus = zip(*pts)
-                ax.plot(ts, mus, color=method_color(method, coef_val),
-                        label=method_label(method, coef_val), lw=1.8)
-            ax.set_xlim(0, t_max)
-            style_ax(ax,
-                     xlabel=r"Simulation time $t$ [s]",
-                     ylabel=r"$\mu(t) = \sigma^2/(4(t_0+t))$ [m²/s]",
-                     title=title)
-            style_legend(ax)
-            save_figure(fig, out_base / stem, formats=formats)
-            plt.close(fig)
-            print(f"[plot] wrote {out_base / stem}.*")
-
-        _plot_mu(
-            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
-             ("apic", None), ("apic", 0.0)],
-            "lamb_mu_methods",
-            r"Lamb-Oseen: effective viscosity $\mu(t)$ — PIC / FLIP / APIC",
-        )
-        _plot_mu(
-            flip_sig_keys,
-            "lamb_mu_flip",
-            r"Lamb-Oseen: effective viscosity $\mu(t)$ — FLIP $\alpha$ variations",
-        )
-
-        # ---- Plot 5 & 6: ν_eff(t) = (σ²(t) − σ²(0)) / 4t — cumulative numerical diffusion ----
-        # σ²(0) from each method's first data point
-        sig0: Dict[tuple, float] = {}
-        for key, pts in sig_series.items():
-            pts_sorted = sorted(pts, key=lambda x: x[0])
-            if pts_sorted:
-                sig0[key] = pts_sorted[0][1]
-
-        nu_eff_series: Dict[tuple, list] = defaultdict(list)
-        for key, pts in sig_series.items():
-            sq0 = sig0.get(key)
-            if sq0 is None:
-                continue
-            for t, sq in pts:
-                if t > 1e-10:
-                    nu_eff_series[key].append((t, (sq - sq0) / (4.0 * t)))
-
-        def _plot_nu_eff(keys, stem, title):
-            keys = [k for k in keys if k in nu_eff_series]
-            if not keys:
-                return
-            fig, ax = plt.subplots()
-            ax.axhline(0.0, color="black", linestyle=":", linewidth=1.0,
-                       label="Perfect inviscid ($\\nu_{eff}=0$)", zorder=0)
-            ax.axhline(_LO_NU, color="black", linestyle="--", linewidth=1.4,
-                       label=rf"Physical $\nu = {_LO_NU}$ m²/s", zorder=0)
-            for method, coef_val in keys:
-                pts = sorted(nu_eff_series[(method, coef_val)], key=lambda x: x[0])
-                ts, nus = zip(*pts)
-                ax.plot(ts, nus, color=method_color(method, coef_val),
-                        label=method_label(method, coef_val), lw=1.8)
-            ax.set_xlim(0, t_max)
-            style_ax(ax,
-                     xlabel=r"Simulation time $t$ [s]",
-                     ylabel=r"$\nu_{eff}(t) = (\sigma^2(t)-\sigma^2(0))/(4t)$ [m²/s]",
-                     title=title)
-            style_legend(ax)
-            save_figure(fig, out_base / stem, formats=formats)
-            plt.close(fig)
-            print(f"[plot] wrote {out_base / stem}.*")
-
-        _plot_nu_eff(
-            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
-             ("apic", None), ("apic", 0.0)],
-            "lamb_nueff_methods",
-            r"Lamb-Oseen: numerical diffusion $\nu_{eff}(t)$ — PIC / FLIP / APIC",
-        )
-        _plot_nu_eff(
-            flip_sig_keys,
-            "lamb_nueff_flip",
-            r"Lamb-Oseen: numerical diffusion $\nu_{eff}(t)$ — FLIP $\alpha$ variations",
-        )
-
-    # ---- Plot 5 & 6: u_θ(r) at t_final vs analytical ----
-    rp_csv  = data_dir / "lamb" / "radial_profile.csv"
-    rp_rows = _load_or_warn(rp_csv, "lamb/radial_profile")
-
-    if rp_rows is not None:
-        rp_series: Dict[tuple, list] = defaultdict(list)
-        t_final_val = 0.0
-        for row in rp_rows:
-            r   = _try_float(row.get("r"))
-            vt  = _try_float(row.get("v_theta_sim"))
-            if r is None or vt is None:
-                continue
-            method   = row.get("method", "pic")
-            coef_val = _try_float(row.get("flip_coef"))
-            rp_series[(method, coef_val)].append((r, vt))
-            t_final_val = max(t_final_val, _try_float(row.get("time")) or 0.0)
-
-        if rp_series:
-            all_r = sorted({r for pts in rp_series.values() for r, _ in pts})
-            r_arr = np.array(all_r)
-            sig_sq_t0   = 4.0 * _LO_NU * _LO_T0
-            sig_sq_tfin = 4.0 * _LO_NU * (_LO_T0 + t_final_val)
-
-            def _vtheta_ana(r_arr, sig_sq):
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    return np.where(r_arr > 1e-12,
-                        (_LO_GAMMA / (2.0 * math.pi * r_arr))
-                        * (1.0 - np.exp(-r_arr ** 2 / sig_sq)),
-                        0.0)
-
-        def _plot_rp(keys, stem, title):
-            keys = [k for k in keys if k in rp_series]
-            if not keys:
-                return
-            fig, ax = plt.subplots()
-            ax.plot(r_arr, _vtheta_ana(r_arr, sig_sq_t0), color="black",
-                    linestyle=":", linewidth=1.2,
-                    label=r"Analytical $t=0$", zorder=0)
-            ax.plot(r_arr, _vtheta_ana(r_arr, sig_sq_tfin), color="black",
-                    linestyle="--", linewidth=1.4,
-                    label=rf"Analytical $t_{{final}}={t_final_val:.1f}$ s", zorder=0)
-            for method, coef_val in keys:
-                pts = sorted(rp_series[(method, coef_val)], key=lambda x: x[0])
-                rs, vts = zip(*pts)
-                ax.plot(rs, vts, color=method_color(method, coef_val),
-                        label=method_label(method, coef_val), lw=1.8)
-            style_ax(ax, xlabel=r"$r$ [m]",
-                     ylabel=r"$u_\theta(r)$ [m/s]", title=title)
-            style_legend(ax)
-            save_figure(fig, out_base / stem, formats=formats)
-            plt.close(fig)
-            print(f"[plot] wrote {out_base / stem}.*")
-
-        _plot_rp(
-            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
-             ("apic", None), ("apic", 0.0)],
-            "lamb_profile_methods",
-            r"Lamb-Oseen vortex: $u_\theta(r)$ at $t_\mathrm{final}$ — PIC / FLIP / APIC",
-        )
-        flip_rp_keys = sorted(
-            [(m, c) for (m, c) in rp_series if m == "flip" and c is not None and c > 1e-12],
-            key=lambda k: k[1],
-        )
-        _plot_rp(
-            flip_rp_keys,
-            "lamb_profile_flip",
-            r"Lamb-Oseen vortex: $u_\theta(r)$ at $t_\mathrm{final}$ — FLIP $\alpha$ variations",
-        )
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1129,8 +932,6 @@ def main() -> int:
     plot_scaling_weak(data_dir, img_dir, formats)
     plot_vk_point(data_dir, img_dir, formats)
     plot_rankine(data_dir, img_dir, formats)
-    plot_lamb(data_dir, img_dir, formats)
-
 
     print("[plot] done")
     return 0

@@ -64,6 +64,10 @@ def _run_name(test: str, method: str, ppc: int, flip_coef: Optional[float], thre
     return name
 
 
+def _sample_time(sample_i: int, dt: float, sampling_rate: int) -> float:
+    return float(sample_i) * float(dt) * float(sampling_rate)
+
+
 def _build_config(
     base: dict,
     method: str,
@@ -106,7 +110,13 @@ def _build_config(
 # VTI extraction
 # ---------------------------------------------------------------------------
 
-def _extract_kinetic_energy(pvd_path: Path, dx: float, dy: float) -> List[Tuple[int, float, float, float]]:
+def _extract_kinetic_energy(
+    pvd_path: Path,
+    dx: float,
+    dy: float,
+    dt: float,
+    sampling_rate: int,
+) -> List[Tuple[int, float, float, float]]:
     """Returns list of (step, time, kinetic_energy, velocity_l2)."""
     if not pvd_path.exists():
         return []
@@ -114,7 +124,7 @@ def _extract_kinetic_energy(pvd_path: Path, dx: float, dy: float) -> List[Tuple[
     tree = ET.parse(pvd_path)
     rows = []
     for i, dataset in enumerate(tree.getroot().iter("DataSet")):
-        t = float(dataset.get("timestep", i))
+        t = _sample_time(i, dt, sampling_rate)
         fpath = pvd_path.parent / dataset.get("file", "")
         if not fpath.exists():
             continue
@@ -128,7 +138,14 @@ def _extract_kinetic_energy(pvd_path: Path, dx: float, dy: float) -> List[Tuple[
     return rows
 
 
-def _compute_vorticity_from_uv(u_pvd: Path, v_pvd: Path, dx: float, dy: float) -> List[Tuple[int, float, float, float]]:
+def _compute_vorticity_from_uv(
+    u_pvd: Path,
+    v_pvd: Path,
+    dx: float,
+    dy: float,
+    dt: float,
+    sampling_rate: int,
+) -> List[Tuple[int, float, float, float]]:
     """Compute vorticity from u and v fields."""
     import xml.etree.ElementTree as ET
     if not u_pvd.exists() or not v_pvd.exists():
@@ -139,7 +156,7 @@ def _compute_vorticity_from_uv(u_pvd: Path, v_pvd: Path, dx: float, dy: float) -
     v_datasets = list(v_tree.getroot().iter("DataSet"))
     rows = []
     for i, (u_ds, v_ds) in enumerate(zip(u_datasets, v_datasets)):
-        t = float(u_ds.get("timestep", i))
+        t = _sample_time(i, dt, sampling_rate)
         u_path = u_pvd.parent / u_ds.get("file", "")
         v_path = v_pvd.parent / v_ds.get("file", "")
         if not u_path.exists() or not v_path.exists():
@@ -159,7 +176,13 @@ def _compute_vorticity_from_uv(u_pvd: Path, v_pvd: Path, dx: float, dy: float) -
     return rows
 
 
-def _extract_vorticity(raw_dir: Path, dx: float, dy: float) -> List[Tuple[int, float, float, float]]:
+def _extract_vorticity(
+    raw_dir: Path,
+    dx: float,
+    dy: float,
+    dt: float,
+    sampling_rate: int,
+) -> List[Tuple[int, float, float, float]]:
     """Try vorticity.pvd directly, fall back to u+v computation."""
     vort_pvd = raw_dir / "vorticity.pvd"
     if vort_pvd.exists():
@@ -167,7 +190,7 @@ def _extract_vorticity(raw_dir: Path, dx: float, dy: float) -> List[Tuple[int, f
         tree = ET.parse(vort_pvd)
         rows = []
         for i, dataset in enumerate(tree.getroot().iter("DataSet")):
-            t = float(dataset.get("timestep", i))
+            t = _sample_time(i, dt, sampling_rate)
             fpath = vort_pvd.parent / dataset.get("file", "")
             if not fpath.exists():
                 continue
@@ -183,10 +206,14 @@ def _extract_vorticity(raw_dir: Path, dx: float, dy: float) -> List[Tuple[int, f
     # Fall back to u+v
     u_pvd = raw_dir / "u.pvd"
     v_pvd = raw_dir / "v.pvd"
-    return _compute_vorticity_from_uv(u_pvd, v_pvd, dx, dy)
+    return _compute_vorticity_from_uv(u_pvd, v_pvd, dx, dy, dt, sampling_rate)
 
 
-def _extract_particle_counts(pvd_path: Path) -> List[Tuple[int, float, int]]:
+def _extract_particle_counts(
+    pvd_path: Path,
+    dt: float,
+    sampling_rate: int,
+) -> List[Tuple[int, float, int]]:
     """Returns (step, time, n_particles) from particles.pvd."""
     if not pvd_path.exists():
         return []
@@ -194,7 +221,7 @@ def _extract_particle_counts(pvd_path: Path) -> List[Tuple[int, float, int]]:
     tree = ET.parse(pvd_path)
     rows = []
     for i, dataset in enumerate(tree.getroot().iter("DataSet")):
-        t = float(dataset.get("timestep", i))
+        t = _sample_time(i, dt, sampling_rate)
         fpath = pvd_path.parent / dataset.get("file", "")
         if not fpath.exists():
             continue
@@ -276,7 +303,7 @@ def main() -> int:
     parser.add_argument("--dt", type=float, default=None)
     parser.add_argument("--write-particles", action="store_true",
                         help="also write VTP particle frames")
-    parser.add_argument("--keep-raw", action="store_true",
+    parser.add_argument("--keep-raw", "--raw", action="store_true",
                         help="keep raw VTI/VTP output after extraction")
     args = parser.parse_args()
 
@@ -316,6 +343,7 @@ def main() -> int:
 
     dx = float(base_config.get("dx", 0.05))
     dy = float(base_config.get("dy", 0.05))
+    dt = float(overrides.get("dt", base_config.get("dt", 0.01)))
 
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
     ppc_list = [int(p.strip()) for p in args.ppc.split(",") if p.strip()]
@@ -352,12 +380,14 @@ def main() -> int:
                     run_specs.append((name, method, ppc, coef, repeat))
 
     for name, method, ppc, coef, repeat in tqdm(run_specs, desc="runs", unit="run"):
-        if not args.force and name in completed_runs:
-            print(f"[skip] {name} (already completed)")
-            continue
-
         run_dir = runs_dir / name
         raw_dir = run_dir / "raw"
+
+        if not args.force and name in completed_runs:
+            if not args.keep_raw or raw_dir.exists():
+                print(f"[skip] {name} (already completed)")
+                continue
+            print(f"[rerun] {name} (raw output missing)")
 
         config = _build_config(
             base_config,
@@ -390,7 +420,7 @@ def main() -> int:
         if status == "ok" and np is not None:
             # Kinetic energy
             norm_pvd = raw_dir / "normVelocity.pvd"
-            ke_data = _extract_kinetic_energy(norm_pvd, dx, dy)
+            ke_data = _extract_kinetic_energy(norm_pvd, dx, dy, dt, sampling_rate)
             for step, t, ke, vel_l2 in ke_data:
                 energy_rows.append({
                     "run": name, "step": step, "time": t,
@@ -402,7 +432,7 @@ def main() -> int:
 
             # Vorticity
             if args.analysis == "vorticity":
-                vort_data = _extract_vorticity(raw_dir, dx, dy)
+                vort_data = _extract_vorticity(raw_dir, dx, dy, dt, sampling_rate)
                 for step, t, vort_l2, enstrophy in vort_data:
                     vorticity_rows.append({
                         "run": name, "step": step, "time": t,
@@ -414,7 +444,7 @@ def main() -> int:
             # Particle count
             if args.write_particles:
                 part_pvd = raw_dir / "particles.pvd"
-                part_data = _extract_particle_counts(part_pvd)
+                part_data = _extract_particle_counts(part_pvd, dt, sampling_rate)
                 volume_per_particle = dx * dy / (ppc * ppc)
                 for step, t, n_part in part_data:
                     particle_rows.append({

@@ -138,13 +138,13 @@ def _run_sim(
 # PVD iterator
 # ---------------------------------------------------------------------------
 
-def _pvd_datasets(pvd_path: Path):
+def _pvd_datasets(pvd_path: Path, dt: float, sampling_rate: int):
     """Yield (timestep_float, vti_path) from a PVD file."""
     import xml.etree.ElementTree as ET
     if not pvd_path.exists():
         return
-    for ds in ET.parse(pvd_path).getroot().iter("DataSet"):
-        t = float(ds.get("timestep", 0))
+    for sample_i, ds in enumerate(ET.parse(pvd_path).getroot().iter("DataSet")):
+        t = float(sample_i) * float(dt) * float(sampling_rate)
         fpath = pvd_path.parent / ds.get("file", "")
         if fpath.exists():
             yield t, fpath
@@ -175,6 +175,8 @@ def _extract_all(
     nx: int, ny: int,
     cx_phys: float, cy_phys: float,
     r_max_phys: float,
+    dt: float,
+    sampling_rate: int,
 ):
     """
     Iterate all u+v frames.  For each compute:
@@ -187,9 +189,9 @@ def _extract_all(
       sigma_rows list of {sample, time, sigma_sq, sigma_sq_excess}
       rp_rows    list of {r, v_theta_sim}          (last frame only)
     """
-    norm_frames = list(_pvd_datasets(raw_dir / "normVelocity.pvd"))
-    u_frames    = list(_pvd_datasets(raw_dir / "u.pvd"))
-    v_frames    = list(_pvd_datasets(raw_dir / "v.pvd"))
+    norm_frames = list(_pvd_datasets(raw_dir / "normVelocity.pvd", dt, sampling_rate))
+    u_frames    = list(_pvd_datasets(raw_dir / "u.pvd", dt, sampling_rate))
+    v_frames    = list(_pvd_datasets(raw_dir / "v.pvd", dt, sampling_rate))
 
     if not u_frames or not v_frames:
         return [], [], []
@@ -307,7 +309,7 @@ def main() -> int:
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-release")
     parser.add_argument("--build-jobs", type=int, default=None)
     parser.add_argument("--force", action="store_true")
-    parser.add_argument("--keep-raw", action="store_true")
+    parser.add_argument("--keep-raw", "--raw", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -335,6 +337,7 @@ def main() -> int:
     nx = int(base_config.get("nx", 400))
     ny = int(base_config.get("ny", 400))
     nt = args.nt if args.nt is not None else int(base_config.get("nt", 2000))
+    dt = float(base_config.get("dt", 0.002))
     sampling_rate = max(1, nt // args.samples)
 
     rk   = base_config.get("rankine_vortex", {})
@@ -352,7 +355,7 @@ def main() -> int:
     cy_phys = (ny // 2) * dy
 
     print(f"[info] omega={omega}, core_r={core_r_phys:.3f} m, "
-          f"peak_u_theta={omega*core_r_phys:.3f} m/s, t_final={nt*float(base_config.get('dt',0.002)):.2f} s")
+          f"peak_u_theta={omega*core_r_phys:.3f} m/s, t_final={nt*dt:.2f} s")
 
     methods    = [m.strip() for m in args.methods.split(",")   if m.strip()]
     flip_coefs = [float(c.strip()) for c in args.flip_coef.split(",") if c.strip()]
@@ -373,12 +376,14 @@ def main() -> int:
     runs_dir = out_dir / "runs"
 
     for name, method, coef in run_specs:
-        if not args.force and name in completed:
-            print(f"[skip] {name}")
-            continue
-
         run_dir = runs_dir / name
         raw_dir = run_dir / "raw"
+
+        if not args.force and name in completed:
+            if not args.keep_raw or raw_dir.exists():
+                print(f"[skip] {name}")
+                continue
+            print(f"[rerun] {name} (raw output missing)")
 
         config = _build_config(
             base_config, method, args.ppc, coef,
@@ -393,7 +398,8 @@ def main() -> int:
             continue
 
         ke_data, sig_data, rp_data = _extract_all(
-            raw_dir, dx, dy, nx, ny, cx_phys, cy_phys, r_max_phys
+            raw_dir, dx, dy, nx, ny, cx_phys, cy_phys, r_max_phys,
+            dt, sampling_rate
         )
 
         if not ke_data:
