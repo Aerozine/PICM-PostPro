@@ -579,14 +579,16 @@ def plot_velocity_methods(data_dir: Path, img_dir: Path, formats: tuple) -> None
 # ---------------------------------------------------------------------------
 
 def plot_vk_point(data_dir: Path, img_dir: Path, formats: tuple) -> None:
-    """||v|| at the wake point (nx/2, ny/4) vs time for every method variant."""
+    """Two plots from wake_point.csv:
+      - wakePoint_methods : PIC / FLIP (coef=0) / APIC
+      - wakePoint_flip    : FLIP α=0.01 / 0.05 / 0.1
+    """
     csv_path = data_dir / "vk_point" / "wake_point.csv"
     rows = _load_or_warn(csv_path, "vk_point/wakePoint")
     if rows is None:
         return
 
     from collections import defaultdict
-    # Group by (method, flip_coef) → list of (time, normVelocity)
     series: Dict[tuple, list] = defaultdict(list)
     for row in rows:
         t = _try_float(row.get("time"))
@@ -595,42 +597,53 @@ def plot_vk_point(data_dir: Path, img_dir: Path, formats: tuple) -> None:
             continue
         method = row.get("method", "pic")
         coef = row.get("flip_coef", None)
-        key = (method, coef if coef not in ("", None) else None)
+        coef_val = _try_float(coef)
+        key = (method, coef_val)
         series[key].append((t, v))
 
     if not series:
         print("[plot] vk_point/wakePoint: no data")
         return
 
-    # Same sort order as plot_velocity_methods
-    def _sort_key(key):
-        m, c = key
-        if m == "pic":
-            return (0, 0.0)
-        if m == "apic":
-            return (3, 0.0)
-        coef_val = float(c) if c not in (None, "None") else 0.0
-        return (1, coef_val)
+    def _plot_subset(keys, stem, title):
+        keys = [k for k in keys if k in series]
+        if not keys:
+            print(f"[plot] vk_point/{stem}: no matching data")
+            return
+        fig, ax = plt.subplots()
+        for method, coef_val in keys:
+            color = method_color(method, coef_val)
+            label = method_label(method, coef_val)
+            data = sorted(series[(method, coef_val)], key=lambda x: x[0])
+            ts, vs = zip(*data)
+            ax.plot(ts, vs, color=color, label=label, lw=1.5)
+        style_ax(ax,
+                 xlabel=r"Time $t$ [s]",
+                 ylabel=r"$\|\mathbf{v}\|$ [m/s]",
+                 title=title)
+        style_legend(ax)
+        out = img_dir / "vk_point" / stem
+        save_figure(fig, out, formats=formats)
+        plt.close(fig)
+        print(f"[plot] wrote {out}.*")
 
-    fig, ax = plt.subplots()
-    for key in sorted(series.keys(), key=_sort_key):
-        method, coef = key
-        coef_val = float(coef) if coef not in (None, "None") else None
-        color = method_color(method, coef_val)
-        label = method_label(method, coef_val)
-        data = sorted(series[key], key=lambda x: x[0])
-        ts, vs = zip(*data)
-        ax.plot(ts, vs, color=color, label=label, lw=1.5)
+    # Plot 1: PIC vs pure FLIP (coef=0) vs APIC
+    _plot_subset(
+        [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0), ("apic", None), ("apic", 0.0)],
+        "wakePoint_methods",
+        r"Wake point $(\frac{L_x}{2},\,\frac{L_y}{4})$: PIC / FLIP / APIC",
+    )
 
-    style_ax(ax,
-             xlabel=r"Time $t$ [s]",
-             ylabel=r"$\|\mathbf{v}\|$ [m/s]",
-             title=r"Wake point $(\frac{L_x}{2},\,\frac{L_y}{4})$: method comparison")
-    style_legend(ax)
-    out = img_dir / "vk_point" / "wakePoint"
-    save_figure(fig, out, formats=formats)
-    plt.close(fig)
-    print(f"[plot] wrote {out}.*")
+    # Plot 2: FLIP α variations only
+    flip_coef_keys = sorted(
+        [(m, c) for (m, c) in series if m == "flip" and c is not None and c > 1e-12],
+        key=lambda k: k[1],
+    )
+    _plot_subset(
+        flip_coef_keys,
+        "wakePoint_flip",
+        r"Wake point $(\frac{L_x}{2},\,\frac{L_y}{4})$: FLIP $\alpha$ variations",
+    )
 
 
 # ---------------------------------------------------------------------------

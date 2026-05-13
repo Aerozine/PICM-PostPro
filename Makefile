@@ -32,6 +32,9 @@ REPORT_FLIP_COEF ?= 0,0.01,0.05,0.1
 REPORT_ANALYSIS  ?= vorticity
 PPC_PPC          ?= 1,2,3,5,8,10
 FREE_FALL_METHODS ?= pic,flip,apic
+VK_POINT_METHODS  ?= pic,flip,apic
+VK_POINT_FLIP_COEF ?= 0,0.01,0.05,0.1
+VK_POINT_PPC      ?= 3
 
 .PHONY: clean build sbatch run video plot
 
@@ -99,6 +102,13 @@ run:
 	  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
 	  --threads 1 \
 	  --out "$(DATA_DIR)/iterative"
+	$(PYTHON) run_vk_point.py \
+	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --methods "$(VK_POINT_METHODS)" \
+	  --flip-coef "$(VK_POINT_FLIP_COEF)" \
+	  --ppc "$(VK_POINT_PPC)" \
+	  --threads "$(THREADS)" \
+	  --out "$(DATA_DIR)/vk_point"
 
 video:
 	$(PYTHON) video.py \

@@ -60,6 +60,11 @@ COLORS = [
 
 COLORS = list(PALETTE.values())
 
+INDIVIDUAL_TITLE_SIZE  = 16
+INDIVIDUAL_LABEL_SIZE  = 16
+INDIVIDUAL_TICK_SIZE   = 14
+INDIVIDUAL_LEGEND_SIZE = 12
+
 # ============================================================
 #  STYLE GLOBAL
 # ============================================================
@@ -71,12 +76,12 @@ def apply_style():
         "figure.dpi":        130,
         "savefig.dpi":       400,
         "savefig.bbox":      "tight",
-        "font.size":         13,
-        "axes.labelsize":    17,
-        "axes.titlesize":    18,
-        "legend.fontsize":   14,
-        "xtick.labelsize":   13,
-        "ytick.labelsize":   13,
+        "font.size":         INDIVIDUAL_TICK_SIZE,
+        "axes.labelsize":    INDIVIDUAL_LABEL_SIZE,
+        "axes.titlesize":    INDIVIDUAL_TITLE_SIZE,
+        "legend.fontsize":   INDIVIDUAL_LEGEND_SIZE,
+        "xtick.labelsize":   INDIVIDUAL_TICK_SIZE,
+        "ytick.labelsize":   INDIVIDUAL_TICK_SIZE,
         "axes.linewidth":    1.2,
         "lines.linewidth":   2.2,
         "lines.markersize":  4.8,
