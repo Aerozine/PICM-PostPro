@@ -47,21 +47,33 @@ def _is_sim_config(path: Path) -> bool:
         return False
 
 
-def _config_name(config_path: Path) -> str:
-    """Generate a short name from a config path, preserving folder structure."""
-    # Try to make a unique name relative to PICM_ROOT
+def _config_name(config_path: Path, roots: List[Path]) -> str:
+    """Generate a short name from a config path relative to its search root.
+
+    Example: if roots=[PICM_ROOT/test] and config is PICM_ROOT/test/APIC/extra/dambreak.json
+             -> "APIC/extra/dambreak"
+    Falls back to stem-only if the path isn't under any known root.
+    """
+    resolved = config_path.resolve()
+    for root in roots:
+        try:
+            rel = resolved.relative_to(root.resolve())
+            # Drop the filename, keep directory structure + stem
+            parts = list(rel.parts[:-1])  # directory components only
+            if parts:
+                return "/".join(parts) + "/" + config_path.stem
+            else:
+                return config_path.stem
+        except ValueError:
+            continue
+    # Last-resort fallback: relative to PICM_ROOT, stripping any leading 'test' segment
     try:
-        rel = config_path.relative_to(PICM_ROOT)
-        parts = list(rel.parts)
-        # Strip 'test' directory but keep everything else (APIC/FLIP/etc. and extra subfolders).
-        # Example: test/APIC/extra/dambreak.json -> APIC/extra/dambreak.mp4
-        name_parts = [p for p in parts if p != "test"]
-        # Remove filename from parts list, use only directory components + stem
-        dir_path = "/".join(name_parts[:-1])
-        if dir_path:
-            return f"{dir_path}/{config_path.stem}"
-        else:
-            return config_path.stem
+        rel = resolved.relative_to(PICM_ROOT.resolve())
+        parts = [p for p in rel.parts if p != "test"]
+        dir_parts = parts[:-1]
+        if dir_parts:
+            return "/".join(dir_parts) + "/" + config_path.stem
+        return config_path.stem
     except ValueError:
         return config_path.stem
 
@@ -135,7 +147,7 @@ def main() -> int:
     new_manifest_rows = list(manifest_rows)
 
     for config_path in sim_configs:
-        name = _config_name(config_path)
+        name = _config_name(config_path, roots)
 
         # Apply method filter
         if method_filter:
