@@ -38,8 +38,11 @@ VK_POINT_PPC       ?= 3
 RANKINE_METHODS    ?= pic,flip,apic
 RANKINE_FLIP_COEF  ?= 0,0.01,0.05,0.1
 RANKINE_PPC        ?= 2
+LAMB_METHODS       ?= pic,flip,apic
+LAMB_FLIP_COEF     ?= 0,0.01,0.05,0.1
+LAMB_PPC           ?= 3
 
-.PHONY: clean build sbatch run rankine video plot
+.PHONY: clean build sbatch run rankine lamb video plot
 
 clean:
 	rm -rf "$(DATA_DIR)" "$(IMG_DIR)" "$(VIDEO_DIR)"
@@ -130,6 +133,16 @@ rankine:
 	  --threads "$(THREADS)" \
 	  --keep-raw \
 	  --out "$(DATA_DIR)/rankine"
+
+lamb:
+	$(PYTHON) run_lamb.py \
+	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --methods "$(LAMB_METHODS)" \
+	  --flip-coef "$(LAMB_FLIP_COEF)" \
+	  --ppc "$(LAMB_PPC)" \
+	  --threads "$(THREADS)" \
+	  --keep-raw \
+	  --out "$(DATA_DIR)/lamb"
 
 video:
 	$(PYTHON) video.py \
