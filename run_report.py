@@ -17,6 +17,12 @@ try:
 except ImportError:
     np = None
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(it, **kwargs):  # type: ignore[misc]
+        return it
+
 from picm_postpro.paths import DATA_DIR, PICM_ROOT
 from picm_postpro.core import (
     build_binary,
@@ -345,7 +351,7 @@ def main() -> int:
                     name = _run_name(args.test, method, ppc, coef, threads, repeat)
                     run_specs.append((name, method, ppc, coef, repeat))
 
-    for name, method, ppc, coef, repeat in run_specs:
+    for name, method, ppc, coef, repeat in tqdm(run_specs, desc="runs", unit="run"):
         if not args.force and name in completed_runs:
             print(f"[skip] {name} (already completed)")
             continue

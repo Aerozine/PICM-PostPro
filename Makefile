@@ -30,13 +30,16 @@ REPORT_METHODS   ?= pic,flip,apic
 REPORT_PPC       ?= 3
 REPORT_FLIP_COEF ?= 0,0.01,0.05,0.1
 REPORT_ANALYSIS  ?= vorticity
-PPC_PPC          ?= 1,2,3,5,8,10
+PPC_PPC          ?= 1,2,3,4,5,6,7,8,9,10
 FREE_FALL_METHODS ?= pic,flip,apic
-VK_POINT_METHODS  ?= pic,flip,apic
+VK_POINT_METHODS   ?= pic,flip,apic
 VK_POINT_FLIP_COEF ?= 0,0.01,0.05,0.1
-VK_POINT_PPC      ?= 3
+VK_POINT_PPC       ?= 3
+RANKINE_METHODS    ?= pic,flip,apic
+RANKINE_FLIP_COEF  ?= 0,0.01,0.05,0.1
+RANKINE_PPC        ?= 2
 
-.PHONY: clean build sbatch run video plot
+.PHONY: clean build sbatch run rankine video plot
 
 clean:
 	rm -rf "$(DATA_DIR)" "$(IMG_DIR)" "$(VIDEO_DIR)"
@@ -91,6 +94,7 @@ run:
 	  --methods pic \
 	  --ppc "$(PPC_PPC)" \
 	  --analysis "$(REPORT_ANALYSIS)" \
+	  --repeats 15 \
 	  --threads "$(THREADS)" \
 	  --out "$(DATA_DIR)/report"
 	$(PYTHON) run_free_fall.py \
@@ -109,6 +113,23 @@ run:
 	  --ppc "$(VK_POINT_PPC)" \
 	  --threads "$(THREADS)" \
 	  --out "$(DATA_DIR)/vk_point"
+	$(PYTHON) run_rankine.py \
+	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --methods "$(RANKINE_METHODS)" \
+	  --flip-coef "$(RANKINE_FLIP_COEF)" \
+	  --ppc "$(RANKINE_PPC)" \
+	  --threads "$(THREADS)" \
+	  --out "$(DATA_DIR)/rankine"
+
+rankine:
+	$(PYTHON) run_rankine.py \
+	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --methods "$(RANKINE_METHODS)" \
+	  --flip-coef "$(RANKINE_FLIP_COEF)" \
+	  --ppc "$(RANKINE_PPC)" \
+	  --threads "$(THREADS)" \
+	  --keep-raw \
+	  --out "$(DATA_DIR)/rankine"
 
 video:
 	$(PYTHON) video.py \

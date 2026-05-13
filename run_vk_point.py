@@ -65,7 +65,7 @@ def _build_config(
     cfg["method"] = method
     cfg["ppcx"] = ppc
     cfg["ppcy"] = ppc
-    cfg["folder"] = str(raw_dir)
+    cfg["folder"] = str(raw_dir.resolve())
     cfg["filename"] = "simulation"
     cfg["nt"] = nt
     cfg["sampling_rate"] = sampling_rate
@@ -100,7 +100,7 @@ def _run_sim(
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "raw").mkdir(parents=True, exist_ok=True)
 
-    config_path = run_dir / f"{name}.json"
+    config_path = (run_dir / f"{name}.json").resolve()
     with open(config_path, "w") as fh:
         json.dump(config, fh, indent=2)
 

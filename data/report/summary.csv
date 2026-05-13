@@ -1,0 +1,6 @@
+run,test,method,ppc,flip_coef,threads,repeat,status,wall_time_s,final_kinetic_energy,final_velocity_l2,final_vorticity_l2
+falling-block-water_pic_ppc3_t4_r1,falling-block-water,pic,3,,4,1,ok,85.232,0.23411166667938232,0.4838508772832327,2.253343463099958
+falling-block-water_flip_ppc3_coefpic0_t4_r1,falling-block-water,flip,3,0.0,4,1,ok,112.097,3.808173418045044,1.951454129046706,5.658657766188353
+falling-block-water_flip_ppc3_coefpic0.01_t4_r1,falling-block-water,flip,3,0.01,4,1,ok,140.982,2.2518374919891357,1.5006123119550285,6.536422144654138
+falling-block-water_flip_ppc3_coefpic0.05_t4_r1,falling-block-water,flip,3,0.05,4,1,ok,143.955,4.493729591369629,2.1198417978818314,7.797749199488593
+falling-block-water_flip_ppc3_coefpic0.1_t4_r1,falling-block-water,flip,3,0.1,4,1,ok,115.179,3.5889408588409424,1.894449982148719,7.431752637542843

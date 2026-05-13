@@ -647,6 +647,228 @@ def plot_vk_point(data_dir: Path, img_dir: Path, formats: tuple) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Plot: Rankine vortex — numerical viscosity analysis
+# ---------------------------------------------------------------------------
+
+def plot_rankine(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    """Four plots from rankine/:
+      KE time series (methods & FLIP variants): normalised kinetic energy E_k(t)/E_k(0)
+      Radial profile (methods & FLIP variants): u_θ(r) at t_final vs analytical Rankine
+    """
+    from collections import defaultdict
+    out_base = img_dir / "rankine"
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    # ---- 1 & 2: Kinetic energy time series ----
+    ke_csv = data_dir / "rankine" / "kinetic_energy.csv"
+    ke_rows = _load_or_warn(ke_csv, "rankine/kinetic_energy")
+
+    if ke_rows is not None:
+        ke_series: Dict[tuple, list] = defaultdict(list)
+        for row in ke_rows:
+            t = _try_float(row.get("time"))
+            ke = _try_float(row.get("ke_norm"))
+            if t is None or ke is None:
+                continue
+            method = row.get("method", "pic")
+            coef_val = _try_float(row.get("flip_coef"))
+            ke_series[(method, coef_val)].append((t, ke))
+
+        t_max = max(t for pts in ke_series.values() for t, _ in pts) if ke_series else 1.0
+
+        def _plot_ke(keys, stem, title):
+            keys = [k for k in keys if k in ke_series]
+            if not keys:
+                print(f"[plot] rankine/{stem}: no data")
+                return
+            fig, ax = plt.subplots()
+            ax.axhline(1.0, color="black", linestyle="--", linewidth=1.2,
+                       label="Analytical (inviscid)", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(ke_series[(method, coef_val)], key=lambda x: x[0])
+                ts, kes = zip(*pts)
+                ax.plot(ts, kes, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max)
+            ax.set_ylim(0, 1.1)
+            style_ax(ax, xlabel=r"Time $t$ [s]",
+                     ylabel=r"$E_k(t)\,/\,E_k(0)$", title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_ke(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_ke_methods",
+            r"Rankine vortex: kinetic energy decay — PIC / FLIP / APIC",
+        )
+        flip_ke_keys = sorted(
+            [(m, c) for (m, c) in ke_series if m == "flip" and c is not None and c > 1e-12],
+            key=lambda k: k[1],
+        )
+        _plot_ke(
+            flip_ke_keys,
+            "rankine_ke_flip",
+            r"Rankine vortex: kinetic energy decay — FLIP $\alpha$ variations",
+        )
+
+    # ---- 3 & 4: Azimuthal velocity profile at t_final ----
+    rp_csv = data_dir / "rankine" / "radial_profile.csv"
+    rp_rows = _load_or_warn(rp_csv, "rankine/radial_profile")
+
+    if rp_rows is not None:
+        rp_series: Dict[tuple, list] = defaultdict(list)
+        for row in rp_rows:
+            r = _try_float(row.get("r"))
+            vt = _try_float(row.get("v_theta_sim"))
+            if r is None or vt is None:
+                continue
+            method = row.get("method", "pic")
+            coef_val = _try_float(row.get("flip_coef"))
+            rp_series[(method, coef_val)].append((r, vt))
+
+        # Reconstruct analytical profile from data range
+        if rp_series:
+            all_r = [r for pts in rp_series.values() for r, _ in pts]
+            r_analytical = np.linspace(0, max(all_r), 400)
+            # Infer core_r from analytical peak location if needed;
+            # use hard-coded config defaults (core_r=60 cells * dx=0.02 = 1.2 m, omega=2.5)
+            OMEGA, CORE_R = 2.5, 1.2
+            vt_analytical = np.where(
+                r_analytical <= CORE_R,
+                OMEGA * r_analytical,
+                OMEGA * CORE_R ** 2 / np.maximum(r_analytical, 1e-12),
+            )
+
+        def _plot_rp(keys, stem, title):
+            keys = [k for k in keys if k in rp_series]
+            if not keys:
+                print(f"[plot] rankine/{stem}: no data")
+                return
+            fig, ax = plt.subplots()
+            ax.plot(r_analytical, vt_analytical, color="black", linestyle="--",
+                    linewidth=1.4, label="Analytical (Rankine)", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(rp_series[(method, coef_val)], key=lambda x: x[0])
+                rs, vts = zip(*pts)
+                ax.plot(rs, vts, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            style_ax(ax, xlabel=r"$r$ [m]",
+                     ylabel=r"$u_\theta(r)$ [m/s]", title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_rp(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_profile_methods",
+            r"Rankine vortex: azimuthal velocity at $t_\mathrm{final}$ — PIC / FLIP / APIC",
+        )
+        flip_rp_keys = sorted(
+            [(m, c) for (m, c) in rp_series if m == "flip" and c is not None and c > 1e-12],
+            key=lambda k: k[1],
+        )
+        _plot_rp(
+            flip_rp_keys,
+            "rankine_profile_flip",
+            r"Rankine vortex: azimuthal velocity at $t_\mathrm{final}$ — FLIP $\alpha$ variations",
+        )
+
+    # ---- 5 & 6: σ²(t) → effective numerical viscosity ----
+    sigma_csv = data_dir / "rankine" / "sigma.csv"
+    sigma_rows_all = _load_or_warn(sigma_csv, "rankine/sigma")
+
+    if sigma_rows_all is not None:
+        sig_series: Dict[tuple, list] = defaultdict(list)
+        for row in sigma_rows_all:
+            t  = _try_float(row.get("time"))
+            se = _try_float(row.get("sigma_sq_excess"))
+            if t is None or se is None:
+                continue
+            method   = row.get("method", "pic")
+            coef_val = _try_float(row.get("flip_coef"))
+            sig_series[(method, coef_val)].append((t, se))
+
+        # Physical viscosity reference slopes (ν in m²/s)
+        # σ²_excess(t) = 4ν t
+        _VISCOSITIES = {
+            r"Water ($\nu=10^{-6}$)":   1e-6,
+            r"Air ($\nu=1.5\times10^{-5}$)": 1.5e-5,
+            r"Engine oil ($\nu=10^{-4}$)": 1e-4,
+        }
+
+        def _fit_nu_eff(pts):
+            """Linear fit σ²_excess = 4ν t → return ν_eff."""
+            if len(pts) < 3:
+                return float("nan")
+            ts = np.array([p[0] for p in pts])
+            ses = np.array([p[1] for p in pts])
+            # weighted least-squares through origin: ν_eff = Σ(t·se)/(4·Σ(t²))
+            nu = float(np.dot(ts, ses) / (4.0 * np.dot(ts, ts))) if np.dot(ts, ts) > 0 else float("nan")
+            return nu
+
+        def _plot_sigma(keys, stem, title):
+            keys = [k for k in keys if k in sig_series]
+            if not keys:
+                print(f"[plot] rankine/{stem}: no data")
+                return
+
+            t_max_s = max(t for k in keys for t, _ in sig_series[k])
+            t_ref   = np.linspace(0, t_max_s, 200)
+
+            fig, ax = plt.subplots()
+
+            # Reference physical viscosity lines (thin, grey shades)
+            ref_colors = ["#aaaaaa", "#888888", "#555555"]
+            for (label, nu), rc in zip(_VISCOSITIES.items(), ref_colors):
+                ax.plot(t_ref, 4 * nu * t_ref, color=rc, lw=1.0,
+                        linestyle=":", label=label, zorder=0)
+
+            # Simulation lines
+            for method, coef_val in keys:
+                pts = sorted(sig_series[(method, coef_val)], key=lambda x: x[0])
+                ts, ses = zip(*pts)
+                nu_eff = _fit_nu_eff(pts)
+                label  = method_label(method, coef_val)
+                if not math.isnan(nu_eff):
+                    label += f"\n$\\nu_{{eff}}={nu_eff:.2e}$ m²/s"
+                ax.plot(ts, ses, color=method_color(method, coef_val),
+                        label=label, lw=1.8)
+
+            ax.axhline(0, color="black", linestyle="--", linewidth=1.0,
+                       label="Analytical (inviscid)", zorder=0)
+            ax.set_xlim(0, t_max_s)
+            style_ax(ax,
+                     xlabel=r"Time $t$ [s]",
+                     ylabel=r"$\sigma^2(t) - \sigma^2(0)$ [m²]",
+                     title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_sigma(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_viscosity_methods",
+            r"Rankine vortex: effective numerical viscosity — PIC / FLIP / APIC",
+        )
+        flip_sig_keys = sorted(
+            [(m, c) for (m, c) in sig_series if m == "flip" and c is not None and c > 1e-12],
+            key=lambda k: k[1],
+        )
+        _plot_sigma(
+            flip_sig_keys,
+            "rankine_viscosity_flip",
+            r"Rankine vortex: effective numerical viscosity — FLIP $\alpha$ variations",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -672,6 +894,7 @@ def main() -> int:
     plot_scaling_strong(data_dir, img_dir, formats)
     plot_scaling_weak(data_dir, img_dir, formats)
     plot_vk_point(data_dir, img_dir, formats)
+    plot_rankine(data_dir, img_dir, formats)
 
     print("[plot] done")
     return 0
