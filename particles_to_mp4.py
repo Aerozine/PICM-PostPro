@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Convert a PICM particle PVD/VTP sequence to an MP4 movie."""
 
-from __future__ import annotations
 
 import argparse
 import os
@@ -16,7 +15,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List, Optional, Tuple
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/picm_matplotlib")
 
@@ -74,7 +73,7 @@ def _background_palette(name: str):
     return (255, 255, 255), "white", "black"
 
 
-def parse_pvd(pvd_path: Path) -> list[Path]:
+def parse_pvd(pvd_path: Path) -> List[Path]:
     tree = ET.parse(pvd_path)
     base = pvd_path.parent
     return [
@@ -88,8 +87,8 @@ def parse_pvd(pvd_path: Path) -> list[Path]:
 class _EncoderCandidate:
     label: str
     codec: str
-    global_args: tuple[str, ...]
-    output_args: tuple[str, ...]
+    global_args: Tuple[str, ...]
+    output_args: Tuple[str, ...]
 
 
 def _ffmpeg_binary() -> str:
@@ -118,7 +117,7 @@ def _ffmpeg_encoders() -> frozenset[str]:
     return frozenset(names)
 
 
-def _vaapi_global_args() -> tuple[str, ...]:
+def _vaapi_global_args() -> Tuple[str, ...]:
     device = os.environ.get("PICM_FFMPEG_VAAPI_DEVICE")
     if device:
         return ("-vaapi_device", device)
@@ -130,7 +129,7 @@ def _vaapi_global_args() -> tuple[str, ...]:
     return ()
 
 
-def _software_candidates(crf: int, preset: str) -> list[_EncoderCandidate]:
+def _software_candidates(crf: int, preset: str) -> List[_EncoderCandidate]:
     return [
         _EncoderCandidate(
             "software HEVC",
@@ -169,7 +168,7 @@ def _software_candidates(crf: int, preset: str) -> list[_EncoderCandidate]:
     ]
 
 
-def _hardware_candidates(quality: int) -> list[_EncoderCandidate]:
+def _hardware_candidates(quality: int) -> List[_EncoderCandidate]:
     candidates = [
         _EncoderCandidate(
             "hardware HEVC",
@@ -291,7 +290,7 @@ def _normalise_encoder_name(encoder: str) -> str:
     return encoder.strip().lower().replace("_", "-")
 
 
-def _encoder_candidates(encoder: str, quality: int, preset: str) -> list[_EncoderCandidate]:
+def _encoder_candidates(encoder: str, quality: int, preset: str) -> List[_EncoderCandidate]:
     encoder = _normalise_encoder_name(encoder)
     hardware = _hardware_candidates(quality)
     software = _software_candidates(quality, preset)
@@ -322,8 +321,8 @@ def _ffmpeg_command(
     fps: int,
     candidate: _EncoderCandidate,
     *,
-    extra_output_args: tuple[str, ...] = (),
-) -> list[str]:
+    extra_output_args: Tuple[str, ...] = (),
+) -> List[str]:
     return [
         _ffmpeg_binary(),
         "-y",
@@ -480,7 +479,7 @@ def _load_vtp(path: Path):
     )
 
 
-def _expand_limits(limits: tuple[float, float]) -> tuple[float, float]:
+def _expand_limits(limits: Tuple[float, float]) -> Tuple[float, float]:
     lo, hi = limits
     if not np.isfinite(lo) or not np.isfinite(hi):
         return 0.0, 1.0
@@ -683,17 +682,17 @@ def build_mp4(
     *,
     fps: int = 30,
     cmap_name: str = "viridis",
-    vmin: float | None = None,
-    vmax: float | None = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
     width: int = 1280,
     height: int = 720,
     dpi: int = 120,
     title: str = "PICM particles",
     mode: str = "speed",
-    xlim: tuple[float, float] | None = None,
-    ylim: tuple[float, float] | None = None,
-    n_workers: int | None = None,
-    prefetch: int | None = None,
+    xlim: Optional[Tuple[float, float]] = None,
+    ylim: Optional[Tuple[float, float]] = None,
+    n_workers: Optional[int] = None,
+    prefetch: Optional[int] = None,
     margin: float = 0.08,
     encoder: str = "auto",
     crf: int = 24,
@@ -786,7 +785,7 @@ def build_mp4(
         return
 
     with ProcessPoolExecutor(max_workers=n_workers) as pool:
-        pending: deque[tuple[int, Future]] = deque()
+        pending: deque[Tuple[int, Future]] = deque()
 
         def submit_next(index: int) -> None:
             if index < len(worker_args):

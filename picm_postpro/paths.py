@@ -1,59 +1,38 @@
 import os
 from pathlib import Path
 
-
 POSTPRO_ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS_DIR = POSTPRO_ROOT
 DATA_DIR = Path(os.environ.get("PICM_POSTPRO_DATA", POSTPRO_ROOT / "data")).expanduser()
-MISC_DIR = Path(os.environ.get("PICM_POSTPRO_MISC", DATA_DIR / "misc")).expanduser()
 IMG_DIR = Path(os.environ.get("PICM_POSTPRO_IMG", POSTPRO_ROOT / "img")).expanduser()
 VIDEO_DIR = Path(os.environ.get("PICM_POSTPRO_VIDEO", POSTPRO_ROOT / "video")).expanduser()
 
 
-def _is_picm_root(path: Path) -> bool:
-    return (path / "CMakeLists.txt").is_file() and (path / "src").is_dir()
+def _is_picm_root(p: Path) -> bool:
+    return (p / "CMakeLists.txt").is_file() and (p / "src").is_dir()
 
 
 def find_picm_root() -> Path:
-    """Locate the PICM source tree from standalone or submodule layouts."""
-    candidates: list[Path] = []
-    env_root = os.environ.get("PICM_ROOT")
-    if env_root:
-        candidates.append(Path(env_root).expanduser())
-
-    candidates.extend(
-        (
-            POSTPRO_ROOT.parent,
-            POSTPRO_ROOT.parent / "PICM",
-            POSTPRO_ROOT.parent.parent,
-            Path.cwd(),
-            Path.cwd() / "PICM",
-            Path.cwd().parent,
-        )
-    )
-
+    candidates = []
+    if os.environ.get("PICM_ROOT"):
+        candidates.append(Path(os.environ["PICM_ROOT"]).expanduser())
+    candidates += [
+        POSTPRO_ROOT.parent,
+        POSTPRO_ROOT.parent / "PICM",
+        Path.cwd(),
+        Path.cwd() / "PICM",
+    ]
     seen: set[Path] = set()
-    for candidate in candidates:
+    for c in candidates:
         try:
-            resolved = candidate.resolve()
+            r = c.resolve()
         except OSError:
             continue
-        if resolved in seen:
+        if r in seen:
             continue
-        seen.add(resolved)
-        if _is_picm_root(resolved):
-            return resolved
-
-    tried = ", ".join(str(path) for path in candidates)
-    raise FileNotFoundError(f"could not locate PICM root; tried: {tried}")
+        seen.add(r)
+        if _is_picm_root(r):
+            return r
+    raise FileNotFoundError(f"cannot locate PICM root; tried {candidates}")
 
 
 PICM_ROOT = find_picm_root()
-
-
-def default_misc_dir(data_dir: Path) -> Path:
-    return MISC_DIR / data_dir.resolve().name
-
-
-def default_img_dir(data_dir: Path) -> Path:
-    return IMG_DIR / data_dir.resolve().name

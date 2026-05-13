@@ -1,0 +1,668 @@
+#!/usr/bin/env python3
+from typing import Dict, List, Optional
+"""Unified plotter: reads all CSVs from data/ and writes all images to img/."""
+
+import argparse
+import math
+import sys
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+from picm_postpro.paths import DATA_DIR, IMG_DIR
+from picm_postpro.plots import PALETTE, style_ax, style_legend, save_figure, parse_formats
+from picm_postpro.core import read_csv
+
+# ---------------------------------------------------------------------------
+# Method coloring helpers
+# ---------------------------------------------------------------------------
+
+METHOD_COLORS = {
+    "pic": PALETTE["blue"],
+    "flip": PALETTE["orange"],
+    "apic": PALETTE["green"],
+    "mixed": PALETTE["purple"],
+}
+MIXED_COEF_COLORS = {
+    0.01: PALETTE["purple"],
+    0.05: PALETTE["pink"],
+    0.1: PALETTE["grey"],
+}
+
+
+def method_label(method: str, flip_coef=None) -> str:
+    if method == "pic":
+        return "PIC"
+    if method == "apic":
+        return "APIC"
+    coef = None if flip_coef in ("", None) else float(flip_coef)
+    if coef is None or abs(coef) < 1e-12:
+        return "FLIP"
+    return f"FLIP α={coef:g}"
+
+
+def method_color(method: str, flip_coef=None) -> str:
+    if method == "pic":
+        return METHOD_COLORS["pic"]
+    if method == "apic":
+        return METHOD_COLORS["apic"]
+    coef = None if flip_coef in ("", None) else float(flip_coef)
+    if coef is None or abs(coef) < 1e-12:
+        return METHOD_COLORS["flip"]
+    return MIXED_COEF_COLORS.get(coef, PALETTE["grey"])
+
+
+def _try_float(val) -> Optional[float]:
+    try:
+        v = float(val)
+        return v if math.isfinite(v) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_or_warn(path: Path, name: str) -> Optional[List[dict]]:
+    if not path.exists():
+        print(f"[plot] skip {name}: {path} not found")
+        return None
+    rows = read_csv(path)
+    if not rows:
+        print(f"[plot] skip {name}: {path} is empty")
+        return None
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Plot 1: Kinetic energy time series
+# ---------------------------------------------------------------------------
+
+def plot_energy(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    csv_path = data_dir / "report" / "kinetic_energy.csv"
+    rows = _load_or_warn(csv_path, "energyL2")
+    if rows is None:
+        return
+
+    # Group by run key (method + flip_coef combo)
+    # We need summary to get method/flip_coef per run
+    summary_csv = data_dir / "report" / "summary.csv"
+    summary = read_csv(summary_csv)
+    run_meta: Dict[str, dict] = {r["run"]: r for r in summary}
+
+    # Group rows by run
+    from collections import defaultdict
+    by_run: Dict[str, list] = defaultdict(list)
+    for row in rows:
+        run = row.get("run", "")
+        t = _try_float(row.get("time"))
+        ke = _try_float(row.get("kinetic_energy"))
+        if t is not None and ke is not None:
+            by_run[run].append((t, ke))
+
+    if not by_run:
+        print("[plot] energyL2: no data to plot")
+        return
+
+    fig, ax = plt.subplots()
+    for run, data in sorted(by_run.items()):
+        data.sort(key=lambda x: x[0])
+        ts, kes = zip(*data)
+        meta = run_meta.get(run, {})
+        method = meta.get("method", "pic")
+        coef = meta.get("flip_coef", None)
+        color = method_color(method, coef)
+        label = method_label(method, coef)
+        ax.plot(ts, kes, color=color, label=label)
+
+    style_ax(ax, xlabel="Time [s]", ylabel="Kinetic energy [J/m]", title="Kinetic Energy")
+    style_legend(ax)
+    out = img_dir / "energy" / "energyL2"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 2: Vorticity L2 time series
+# ---------------------------------------------------------------------------
+
+def plot_vorticity(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    csv_path = data_dir / "report" / "vorticity.csv"
+    rows = _load_or_warn(csv_path, "vorticityL2")
+    if rows is None:
+        return
+
+    summary_csv = data_dir / "report" / "summary.csv"
+    summary = read_csv(summary_csv)
+    run_meta: Dict[str, dict] = {r["run"]: r for r in summary}
+
+    from collections import defaultdict
+    by_run: Dict[str, list] = defaultdict(list)
+    for row in rows:
+        run = row.get("run", "")
+        t = _try_float(row.get("time"))
+        vl2 = _try_float(row.get("vorticity_l2"))
+        if t is not None and vl2 is not None:
+            by_run[run].append((t, vl2))
+
+    if not by_run:
+        print("[plot] vorticityL2: no data to plot")
+        return
+
+    fig, ax = plt.subplots()
+    for run, data in sorted(by_run.items()):
+        data.sort(key=lambda x: x[0])
+        ts, vl2s = zip(*data)
+        meta = run_meta.get(run, {})
+        method = meta.get("method", "pic")
+        coef = meta.get("flip_coef", None)
+        color = method_color(method, coef)
+        label = method_label(method, coef)
+        ax.plot(ts, vl2s, color=color, label=label)
+
+    style_ax(ax, xlabel="Time [s]", ylabel="Vorticity L2", title="Vorticity")
+    style_legend(ax)
+    out = img_dir / "vorticity" / "vorticityL2"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 3: Velocity L2 (free fall air study)
+# ---------------------------------------------------------------------------
+
+def plot_velocity(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    csv_path = data_dir / "free_fall" / "velocity.csv"
+    rows = _load_or_warn(csv_path, "velocityL2")
+    if rows is None:
+        return
+
+    from collections import defaultdict
+    by_run: Dict[str, list] = defaultdict(list)
+    for row in rows:
+        run = row.get("run", "")
+        t = _try_float(row.get("time"))
+        v_med = _try_float(row.get("v_median"))
+        v_theory = _try_float(row.get("v_theory"))
+        if t is not None and v_med is not None:
+            by_run[run].append({
+                "t": t, "v_median": v_med, "v_theory": v_theory,
+                "method": row.get("method", "pic"),
+                "flip_coef": row.get("flip_coef", None),
+            })
+
+    if not by_run:
+        print("[plot] velocityL2: no data to plot")
+        return
+
+    fig, ax = plt.subplots()
+    ax2 = ax.twinx()
+
+    theory_plotted = False
+    for run, data in sorted(by_run.items()):
+        data.sort(key=lambda x: x["t"])
+        ts = [d["t"] for d in data]
+        v_obs = [d["v_median"] for d in data]
+        v_th = [d["v_theory"] for d in data if d["v_theory"] is not None]
+        method = data[0]["method"]
+        coef = data[0]["flip_coef"]
+        color = method_color(method, coef)
+        label = method_label(method, coef)
+
+        ax.plot(ts, v_obs, color=color, label=label)
+
+        # Residual on right axis
+        if len(v_th) == len(ts):
+            residuals = [obs - th for obs, th in zip(v_obs, v_th)]
+            ax2.plot(ts, residuals, color=color, linestyle=":", alpha=0.6)
+
+        # Theory line (once)
+        if not theory_plotted and v_th:
+            ts_full = [d["t"] for d in data if d["v_theory"] is not None]
+            ax.plot(ts_full, v_th, "k--", linewidth=1.5, label=r"$v_0 + g\,t$")
+            theory_plotted = True
+
+    style_ax(ax, xlabel="Time [s]", ylabel="Particle velocity [m/s]",
+             title="Free Fall: Velocity Validation")
+    ax2.set_ylabel("Residual [m/s]")
+    style_legend(ax)
+    out = img_dir / "velocity" / "velocityL2"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 4: Volume and particle count (water free fall)
+# ---------------------------------------------------------------------------
+
+def plot_volume_count(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    csv_path = data_dir / "free_fall" / "particle_count.csv"
+    rows = _load_or_warn(csv_path, "volumeCount")
+    if rows is None:
+        return
+
+    from collections import defaultdict
+    by_run: Dict[str, list] = defaultdict(list)
+    for row in rows:
+        run = row.get("run", "")
+        t = _try_float(row.get("time"))
+        vol = _try_float(row.get("volume_m2"))
+        n = _try_float(row.get("n_particles"))
+        if t is not None and vol is not None and n is not None:
+            by_run[run].append({
+                "t": t, "volume_m2": vol, "n_particles": n,
+                "method": row.get("method", "pic"),
+                "ppc": row.get("ppc", ""),
+                "flip_coef": row.get("flip_coef", None),
+            })
+
+    if not by_run:
+        print("[plot] volumeCount: no data to plot")
+        return
+
+    fig, ax = plt.subplots()
+    ax2 = ax.twinx()
+
+    for run, data in sorted(by_run.items()):
+        data.sort(key=lambda x: x["t"])
+        ts = [d["t"] for d in data]
+        vols = [d["volume_m2"] for d in data]
+        ns = [d["n_particles"] for d in data]
+        method = data[0]["method"]
+        coef = data[0]["flip_coef"]
+        ppc = data[0]["ppc"]
+        color = method_color(method, coef)
+        label = f"{method_label(method, coef)} ppc={ppc}"
+
+        ax.plot(ts, vols, color=color, label=label)
+        ax2.plot(ts, ns, color=color, linestyle="--", alpha=0.7)
+
+    style_ax(ax, xlabel="Time [s]", ylabel="Fluid volume [m²]",
+             title="Free Fall: Volume and Particle Count")
+    ax2.set_ylabel("Particle count")
+    style_legend(ax)
+    out = img_dir / "volume" / "volumeCount"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 5 & 6: PPC impact on final energy / vorticity
+# ---------------------------------------------------------------------------
+
+def _plot_ppc(
+    data_dir: Path,
+    img_dir: Path,
+    formats: tuple,
+    metric: str,
+    col: str,
+    ylabel: str,
+    stem: str,
+    title: str,
+) -> None:
+    csv_path = data_dir / "report" / "summary.csv"
+    rows = _load_or_warn(csv_path, stem)
+    if rows is None:
+        return
+
+    from collections import defaultdict
+    # Group by (method, flip_coef, ppc)
+    groups: Dict[tuple, list] = defaultdict(list)
+    for row in rows:
+        if row.get("status") != "ok":
+            continue
+        val = _try_float(row.get(col))
+        ppc = _try_float(row.get("ppc"))
+        if val is None or ppc is None:
+            continue
+        method = row.get("method", "pic")
+        coef = row.get("flip_coef", None)
+        groups[(method, coef)].setdefault(int(ppc), []).append(val)
+
+    # Rebuild for easier handling
+    series_data: Dict[tuple, dict] = {}
+    for row in rows:
+        if row.get("status") != "ok":
+            continue
+        val = _try_float(row.get(col))
+        ppc = _try_float(row.get("ppc"))
+        if val is None or ppc is None:
+            continue
+        method = row.get("method", "pic")
+        coef = row.get("flip_coef", None)
+        key = (method, str(coef) if coef else "")
+        if key not in series_data:
+            series_data[key] = {}
+        p = int(ppc)
+        if p not in series_data[key]:
+            series_data[key][p] = []
+        series_data[key][p].append(val)
+
+    if not series_data:
+        print(f"[plot] {stem}: no data")
+        return
+
+    fig, ax = plt.subplots()
+    for (method, coef_str), ppc_dict in sorted(series_data.items()):
+        coef = _try_float(coef_str)
+        color = method_color(method, coef)
+        label = method_label(method, coef)
+        ppcs = sorted(ppc_dict.keys())
+        means = [np.mean(ppc_dict[p]) for p in ppcs]
+        stds = [np.std(ppc_dict[p]) for p in ppcs]
+        ax.errorbar(ppcs, means, yerr=stds, color=color, label=label,
+                    marker="o", capsize=3)
+
+    ax.set_xlim(0, 11)
+    style_ax(ax, xlabel="Particles per cell", ylabel=ylabel, title=title)
+    style_legend(ax)
+    out = img_dir / "ppc" / stem
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+def plot_ppc_energy(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    _plot_ppc(
+        data_dir, img_dir, formats,
+        metric="energy", col="final_kinetic_energy",
+        ylabel="Final kinetic energy [J/m]",
+        stem="ppc_energyL2",
+        title="PPC Impact: Kinetic Energy",
+    )
+
+
+def plot_ppc_vorticity(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    _plot_ppc(
+        data_dir, img_dir, formats,
+        metric="vorticity", col="final_vorticity_l2",
+        ylabel="Final vorticity L2",
+        stem="ppc_vorticityL2",
+        title="PPC Impact: Vorticity",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plot 7: Iterative solver comparison
+# ---------------------------------------------------------------------------
+
+def plot_iterative(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    csv_path = data_dir / "iterative" / "iterations.csv"
+    rows = _load_or_warn(csv_path, "iterative")
+    if rows is None:
+        return
+
+    from collections import defaultdict
+    by_solver: Dict[str, list] = defaultdict(list)
+    hit_max_by_solver: Dict[str, list] = defaultdict(list)
+
+    for row in rows:
+        solver = row.get("solver", "unknown")
+        step = _try_float(row.get("step"))
+        iters = _try_float(row.get("iterations"))
+        if step is None or iters is None:
+            continue
+        hit_max = str(row.get("hit_max", "False")).lower() in ("true", "1", "yes")
+        by_solver[solver].append((int(step), iters))
+        if hit_max:
+            hit_max_by_solver[solver].append((int(step), iters))
+
+    if not by_solver:
+        print("[plot] iterative: no data to plot")
+        return
+
+    # Check if log scale is needed
+    all_iters = [v for data in by_solver.values() for _, v in data]
+    use_log = (max(all_iters) / max(min(all_iters), 1)) > 50 if all_iters else False
+
+    # Assign colors from palette cycling
+    palette_vals = list(PALETTE.values())
+    fig, ax = plt.subplots()
+    for i, (solver, data) in enumerate(sorted(by_solver.items())):
+        data.sort(key=lambda x: x[0])
+        steps, iters = zip(*data)
+        color = palette_vals[i % len(palette_vals)]
+        ax.plot(steps, iters, color=color, label=solver)
+
+        # Mark hit_max steps
+        hm = hit_max_by_solver.get(solver, [])
+        if hm:
+            hm_steps, hm_iters = zip(*hm)
+            ax.plot(hm_steps, hm_iters, "o", color=color, markersize=6)
+
+    if use_log:
+        ax.set_yscale("log")
+
+    style_ax(ax, xlabel="Time step", ylabel="Iterations", title="Pressure Solver: Iteration Count")
+    style_legend(ax)
+    out = img_dir / "iterative" / "iterative"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 8: Scaling (strong and weak)
+# ---------------------------------------------------------------------------
+
+def _plot_scaling(
+    data_dir: Path,
+    img_dir: Path,
+    formats: tuple,
+    study: str,
+) -> None:
+    csv_path = data_dir / "scaling" / "scaling.csv"
+    rows = _load_or_warn(csv_path, f"scaling/{study}")
+    if rows is None:
+        return
+
+    filtered = [r for r in rows if r.get("study") == study]
+    if not filtered:
+        print(f"[plot] scaling/{study}: no rows for study='{study}'")
+        return
+
+    from collections import defaultdict
+    by_binding: Dict[str, list] = defaultdict(list)
+    for row in filtered:
+        binding = row.get("binding", "")
+        threads = _try_float(row.get("threads"))
+        wall = _try_float(row.get("wall_time_s"))
+        if threads is None or wall is None:
+            continue
+        by_binding[binding].append((int(threads), wall))
+
+    if not by_binding:
+        print(f"[plot] scaling/{study}: no valid data")
+        return
+
+    palette_vals = list(PALETTE.values())
+    fig, ax = plt.subplots()
+    for i, (binding, data) in enumerate(sorted(by_binding.items())):
+        data.sort(key=lambda x: x[0])
+        threads, walls = zip(*data)
+        color = palette_vals[i % len(palette_vals)]
+        ax.plot(threads, walls, color=color, label=binding, marker="o")
+
+    style_ax(ax, xlabel="Threads", ylabel="Wall time [s]",
+             title=f"{study.capitalize()} Scaling")
+    style_legend(ax)
+    out = img_dir / "scaling" / study
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+def plot_scaling_strong(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    _plot_scaling(data_dir, img_dir, formats, "strong")
+
+
+def plot_scaling_weak(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    _plot_scaling(data_dir, img_dir, formats, "weak")
+
+
+# ---------------------------------------------------------------------------
+# Plot 9: Velocity time series per method (PIC / FLIP / APIC / mixed-FLIP)
+# ---------------------------------------------------------------------------
+
+def plot_velocity_methods(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    """Velocity L2 vs time for every method variant — Strouhal-style comparison."""
+    ke_csv = data_dir / "report" / "kinetic_energy.csv"
+    sum_csv = data_dir / "report" / "summary.csv"
+    ke_rows = _load_or_warn(ke_csv, "methods/velocityMethods")
+    if ke_rows is None:
+        return
+
+    from collections import defaultdict
+    run_meta: Dict[str, dict] = {}
+    for r in read_csv(sum_csv):
+        run_meta[r["run"]] = r
+
+    # Aggregate time → mean velocity_l2 per (method, flip_coef) key
+    series: Dict[tuple, Dict[float, List[float]]] = defaultdict(lambda: defaultdict(list))
+    for row in ke_rows:
+        run = row.get("run", "")
+        t = _try_float(row.get("time"))
+        v = _try_float(row.get("velocity_l2"))
+        if t is None or v is None:
+            continue
+        meta = run_meta.get(run, {})
+        method = meta.get("method", row.get("method", "pic"))
+        coef = meta.get("flip_coef", row.get("flip_coef", None))
+        key = (method, coef if coef not in ("", None) else None)
+        series[key][t].append(v)
+
+    if not series:
+        print("[plot] methods/velocityMethods: no data")
+        return
+
+    # Sort keys: pic < flip-pure < flip-mixed... < apic
+    order = {"pic": 0, "apic": 1, "flip": 2}
+    def _sort_key(key):
+        m, c = key
+        base = order.get(m, 9)
+        coef_val = float(c) if c not in (None, "", "None") else 0.0
+        # pure FLIP (coef=0) before mixed; apic last
+        if m == "apic":
+            return (3, 0.0)
+        if m == "pic":
+            return (0, 0.0)
+        return (1, coef_val)
+
+    fig, ax = plt.subplots()
+    for key in sorted(series.keys(), key=_sort_key):
+        method, coef = key
+        coef_val = float(coef) if coef not in (None, "", "None") else None
+        color = method_color(method, coef_val)
+        label = method_label(method, coef_val)
+        bucket = series[key]
+        ts = sorted(bucket.keys())
+        vs = [sum(bucket[t]) / len(bucket[t]) for t in ts]
+        ax.plot(ts, vs, color=color, label=label, lw=1.5)
+
+    style_ax(ax,
+             xlabel=r"Time $t$ [s]",
+             ylabel=r"$\|\mathbf{v}\|_{L^2}$ [m/s]",
+             title="Method comparison: velocity")
+    style_legend(ax)
+    out = img_dir / "methods" / "velocityMethods"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Plot 10: Wake-point velocity vs time (von-Kármán, method comparison)
+# ---------------------------------------------------------------------------
+
+def plot_vk_point(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    """||v|| at the wake point (nx/2, ny/4) vs time for every method variant."""
+    csv_path = data_dir / "vk_point" / "wake_point.csv"
+    rows = _load_or_warn(csv_path, "vk_point/wakePoint")
+    if rows is None:
+        return
+
+    from collections import defaultdict
+    # Group by (method, flip_coef) → list of (time, normVelocity)
+    series: Dict[tuple, list] = defaultdict(list)
+    for row in rows:
+        t = _try_float(row.get("time"))
+        v = _try_float(row.get("normVelocity"))
+        if t is None or v is None:
+            continue
+        method = row.get("method", "pic")
+        coef = row.get("flip_coef", None)
+        key = (method, coef if coef not in ("", None) else None)
+        series[key].append((t, v))
+
+    if not series:
+        print("[plot] vk_point/wakePoint: no data")
+        return
+
+    # Same sort order as plot_velocity_methods
+    def _sort_key(key):
+        m, c = key
+        if m == "pic":
+            return (0, 0.0)
+        if m == "apic":
+            return (3, 0.0)
+        coef_val = float(c) if c not in (None, "None") else 0.0
+        return (1, coef_val)
+
+    fig, ax = plt.subplots()
+    for key in sorted(series.keys(), key=_sort_key):
+        method, coef = key
+        coef_val = float(coef) if coef not in (None, "None") else None
+        color = method_color(method, coef_val)
+        label = method_label(method, coef_val)
+        data = sorted(series[key], key=lambda x: x[0])
+        ts, vs = zip(*data)
+        ax.plot(ts, vs, color=color, label=label, lw=1.5)
+
+    style_ax(ax,
+             xlabel=r"Time $t$ [s]",
+             ylabel=r"$\|\mathbf{v}\|$ [m/s]",
+             title=r"Wake point $(\frac{L_x}{2},\,\frac{L_y}{4})$: method comparison")
+    style_legend(ax)
+    out = img_dir / "vk_point" / "wakePoint"
+    save_figure(fig, out, formats=formats)
+    plt.close(fig)
+    print(f"[plot] wrote {out}.*")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", type=Path, default=DATA_DIR)
+    parser.add_argument("--img", type=Path, default=IMG_DIR)
+    parser.add_argument("--formats", default="png,pdf")
+    args = parser.parse_args()
+
+    formats = parse_formats(args.formats)
+    data_dir = args.data
+    img_dir = args.img
+
+    plot_energy(data_dir, img_dir, formats)
+    plot_vorticity(data_dir, img_dir, formats)
+    plot_velocity(data_dir, img_dir, formats)
+    plot_volume_count(data_dir, img_dir, formats)
+    plot_velocity_methods(data_dir, img_dir, formats)
+    plot_ppc_energy(data_dir, img_dir, formats)
+    plot_ppc_vorticity(data_dir, img_dir, formats)
+    plot_iterative(data_dir, img_dir, formats)
+    plot_scaling_strong(data_dir, img_dir, formats)
+    plot_scaling_weak(data_dir, img_dir, formats)
+    plot_vk_point(data_dir, img_dir, formats)
+
+    print("[plot] done")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
