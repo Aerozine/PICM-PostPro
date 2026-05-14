@@ -72,11 +72,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--solvers", default=",".join(DEFAULT_SOLVERS),
                         help="comma-separated solver names")
-    parser.add_argument("--tolerance", type=float, default=1e-4)
+    parser.add_argument("--tolerance", type=float, default=1e-2)
     parser.add_argument("--threads", type=int, default=None)
-    parser.add_argument("--nt", type=int, default=200)
-    parser.add_argument("--ppc", type=int, default=3)
-    parser.add_argument("--max-iterations", type=int, default=5000)
+    parser.add_argument("--nt", type=int, default=400)
+    parser.add_argument("--ppc", type=int, default=5)
+    parser.add_argument("--max-iterations", type=int, default=1e5)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--binary", type=Path, default=None)
     parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-debug")
@@ -136,7 +136,7 @@ def main() -> int:
             config["ppcx"] = args.ppc
             config["ppcy"] = args.ppc
             config["nt"] = args.nt
-            config["sampling_rate"] = args.nt  # no VTI output
+            config["sampling_rate"] = 1 #args.nt  # no VTI output
             config["folder"] = str(run_dir / "raw")
             config["filename"] = "simulation"
             config["write_norm_velocity"] = False

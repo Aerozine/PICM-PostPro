@@ -79,36 +79,36 @@ sbatch:
 	  sbatch slurm/iterative.slurm
 
 run:
-	$(PYTHON) run_report.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
-	  --test "$(REPORT_TEST)" \
-	  --methods "$(REPORT_METHODS)" \
-	  --ppc "$(REPORT_PPC)" \
-	  --analysis "$(REPORT_ANALYSIS)" \
-	  --flip-coef "$(REPORT_FLIP_COEF)" \
-	  --threads "$(THREADS)" \
-	  --keep-raw \
-	  --out "$(DATA_DIR)/report"
-	$(PYTHON) run_report.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
-	  --test "$(REPORT_TEST)" \
-	  --methods pic \
-	  --ppc "$(PPC_PPC)" \
-	  --analysis "$(REPORT_ANALYSIS)" \
-	  --repeats 15 \
-	  --threads "$(THREADS)" \
-	  --keep-raw \
-	  --out "$(DATA_DIR)/ppc"
-	$(PYTHON) run_free_fall.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
-	  --methods "$(FREE_FALL_METHODS)" \
-	  --threads "$(THREADS)" \
-	  --keep-raw \
-	  --out "$(DATA_DIR)/free_fall"
-	$(PYTHON) run_iterative.py \
-	  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
-	  --threads "$(THREADS)" \
-	  --out "$(DATA_DIR)/iterative"
+	#$(PYTHON) run_report.py \
+	#  --binary "$(BUILD_DIR)/bin/PIC" \
+	#  --test "$(REPORT_TEST)" \
+	#  --methods "$(REPORT_METHODS)" \
+	#  --ppc "$(REPORT_PPC)" \
+	#  --analysis "$(REPORT_ANALYSIS)" \
+	#  --flip-coef "$(REPORT_FLIP_COEF)" \
+	#  --threads "$(THREADS)" \
+	#  --keep-raw \
+	#  --out "$(DATA_DIR)/report"
+	#$(PYTHON) run_report.py \
+	#  --binary "$(BUILD_DIR)/bin/PIC" \
+	#  --test "$(REPORT_TEST)" \
+	#  --methods pic \
+	#  --ppc "$(PPC_PPC)" \
+	#  --analysis "$(REPORT_ANALYSIS)" \
+	#  --repeats 15 \
+	#  --threads "$(THREADS)" \
+	#  --keep-raw \
+	#  --out "$(DATA_DIR)/ppc"
+	#$(PYTHON) run_free_fall.py \
+	#  --binary "$(BUILD_DIR)/bin/PIC" \
+	#  --methods "$(FREE_FALL_METHODS)" \
+	#  --threads "$(THREADS)" \
+	#  --keep-raw \
+	#  --out "$(DATA_DIR)/free_fall"
+	#$(PYTHON) run_iterative.py \
+	#  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
+	#  --threads "$(THREADS)" \
+	#  --out "$(DATA_DIR)/iterative"
 	$(PYTHON) run_vk_point.py \
 	  --binary "$(BUILD_DIR)/bin/PIC" \
 	  --methods "$(VK_POINT_METHODS)" \
@@ -117,14 +117,14 @@ run:
 	  --threads "$(THREADS)" \
 	  --keep-raw \
 	  --out "$(DATA_DIR)/vk_point"
-	$(PYTHON) run_rankine.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
-	  --methods "$(RANKINE_METHODS)" \
-	  --flip-coef "$(RANKINE_FLIP_COEF)" \
-	  --ppc "$(RANKINE_PPC)" \
-	  --threads "$(THREADS)" \
-	  --keep-raw \
-	  --out "$(DATA_DIR)/rankine"
+	#$(PYTHON) run_rankine.py \
+	#  --binary "$(BUILD_DIR)/bin/PIC" \
+	#  --methods "$(RANKINE_METHODS)" \
+	#  --flip-coef "$(RANKINE_FLIP_COEF)" \
+	#  --ppc "$(RANKINE_PPC)" \
+	#  --threads "$(THREADS)" \
+	#  --keep-raw \
+	#  --out "$(DATA_DIR)/rankine"
 
 rankine:
 	$(PYTHON) run_rankine.py \
