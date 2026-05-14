@@ -78,6 +78,7 @@ def _build_config(
     cfg["filename"] = "simulation"
     cfg["nt"] = nt
     cfg["sampling_rate"] = sampling_rate
+    cfg.setdefault("solver", {}).update({"type": "cg", "max_iterations": 10_000, "tolerance": 1e-2})
 
     if method == "flip" and flip_coef is not None:
         cfg["coefpic"] = flip_coef

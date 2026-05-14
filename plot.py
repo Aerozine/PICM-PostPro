@@ -799,15 +799,21 @@ def plot_rankine(data_dir: Path, img_dir: Path, formats: tuple) -> None:
             plt.close(fig)
             print(f"[plot] wrote {out_base / stem}.*")
 
+        flip_rp_keys = sorted(
+            [(m, c) for (m, c) in rp_series if m == "flip" and c is not None and c > 1e-12],
+            key=lambda k: k[1],
+        )
         _plot_rp(
             [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
              ("apic", None), ("apic", 0.0)],
             "rankine_profile_methods",
             r"Rankine vortex: azimuthal velocity at $t_\mathrm{final}$ — PIC / FLIP / APIC",
         )
-        flip_rp_keys = sorted(
-            [(m, c) for (m, c) in rp_series if m == "flip" and c is not None and c > 1e-12],
-            key=lambda k: k[1],
+        _plot_rp(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_profile_methods_radial",
+            r"Rankine vortex: azimuthal velocity $u_\theta(r)$ — PIC / FLIP / APIC",
         )
         _plot_rp(
             flip_rp_keys,
@@ -902,6 +908,91 @@ def plot_rankine(data_dir: Path, img_dir: Path, formats: tuple) -> None:
             flip_sig_keys,
             "rankine_viscosity_flip",
             r"Rankine vortex: effective numerical viscosity — FLIP $\alpha$ variations",
+        )
+
+        # ---- 7 & 8: ν_eff(t) = σ²_excess(t) / 4t — cumulative numerical diffusivity ----
+        nu_eff_series_rk: Dict[tuple, list] = defaultdict(list)
+        for key, pts in sig_series.items():
+            for t, se in pts:
+                if t > 1e-10:
+                    nu_eff_series_rk[key].append((t, se / (4.0 * t)))
+
+        def _plot_nueff_rk(keys, stem, title):
+            keys = [k for k in keys if k in nu_eff_series_rk]
+            if not keys:
+                print(f"[plot] rankine/{stem}: no data")
+                return
+            t_max_rk = max(t for k in keys for t, _ in nu_eff_series_rk[k])
+            fig, ax = plt.subplots()
+            ax.axhline(0.0, color="black", linestyle=":", linewidth=1.0,
+                       label="Perfect inviscid ($\\nu_{eff}=0$)", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(nu_eff_series_rk[(method, coef_val)], key=lambda x: x[0])
+                ts, nus = zip(*pts)
+                ax.plot(ts, nus, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max_rk)
+            style_ax(ax,
+                     xlabel=r"Time $t$ [s]",
+                     ylabel=r"$\nu_{eff}(t)=(\sigma^2(t)-\sigma^2(0))/(4t)$ [m²/s]",
+                     title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_nueff_rk(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_nueff_methods",
+            r"Rankine vortex: $\nu_{eff}(t)$ — PIC / FLIP / APIC",
+        )
+        _plot_nueff_rk(
+            flip_sig_keys,
+            "rankine_nueff_flip",
+            r"Rankine vortex: $\nu_{eff}(t)$ — FLIP $\alpha$ variations",
+        )
+
+        # ---- 9 & 10: μ(t) = σ²_excess(t) / 4t — same as ν_eff for Rankine (no t₀) ----
+        # Shown separately with reference viscosity lines for water/air/oil
+        def _plot_mu_rk(keys, stem, title):
+            keys = [k for k in keys if k in nu_eff_series_rk]
+            if not keys:
+                print(f"[plot] rankine/{stem}: no data")
+                return
+            t_max_rk = max(t for k in keys for t, _ in nu_eff_series_rk[k])
+            t_ref = np.linspace(0, t_max_rk, 200)
+            fig, ax = plt.subplots()
+            ref_colors = ["#aaaaaa", "#888888", "#555555"]
+            for (label, nu), rc in zip(_VISCOSITIES.items(), ref_colors):
+                ax.axhline(nu, color=rc, lw=1.0, linestyle=":", label=label, zorder=0)
+            ax.axhline(0.0, color="black", linestyle="--", linewidth=1.0,
+                       label="Perfect inviscid", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(nu_eff_series_rk[(method, coef_val)], key=lambda x: x[0])
+                ts, mus = zip(*pts)
+                ax.plot(ts, mus, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max_rk)
+            style_ax(ax,
+                     xlabel=r"Time $t$ [s]",
+                     ylabel=r"$\mu(t)=(\sigma^2(t)-\sigma^2(0))/(4t)$ [m²/s]",
+                     title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_mu_rk(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "rankine_mu_methods",
+            r"Rankine vortex: $\mu(t)$ vs physical reference viscosities — PIC / FLIP / APIC",
+        )
+        _plot_mu_rk(
+            flip_sig_keys,
+            "rankine_mu_flip",
+            r"Rankine vortex: $\mu(t)$ vs physical reference viscosities — FLIP $\alpha$ variations",
         )
 
 
