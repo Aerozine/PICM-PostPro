@@ -73,7 +73,7 @@ def _build_config(
     cfg["filename"] = "simulation"
     cfg["nt"] = nt
     cfg["sampling_rate"] = sampling_rate
-    cfg.setdefault("solver", {}).update({"type": "cg", "max_iterations": 10_000, "tolerance": 1e-2})
+    cfg.setdefault("solver", {}).update({"type": "cg", "max_iterations": 1_000_000, "tolerance": 1e-4})
 
     if method == "flip" and flip_coef is not None:
         cfg["coefpic"] = flip_coef
@@ -188,7 +188,7 @@ def main() -> int:
     parser.add_argument("--threads", type=int, default=None)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--binary", type=Path, default=None)
-    parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-release")
+    parser.add_argument("--build-dir", type=Path, default=PICM_ROOT / "build-debug")
     parser.add_argument("--build-jobs", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--keep-raw", "--raw", action="store_true")

@@ -21,8 +21,8 @@ PYTHON          ?= python3
 
 # Thread count: respect SLURM if available, else all CPUs
 THREADS ?= $(shell $(PYTHON) -c \
-	"import os; v=os.environ.get('SLURM_CPUS_PER_TASK'); print(v if v else os.cpu_count() or 1)" \
-	2>/dev/null || echo 1)
+    "import os; v=os.environ.get('SLURM_CPUS_PER_TASK'); print(v if v else os.cpu_count() or 1)" \
+    2>/dev/null || echo 1)
 
 # Study defaults (override on command line: make run REPORT_TEST=dambreak)
 REPORT_TEST      ?= falling-block-water
@@ -113,7 +113,7 @@ run:
 	#  --threads "$(THREADS)" \
 	#  --out "$(DATA_DIR)/iterative"
 	$(PYTHON) run_vk_point.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
 	  --methods "$(VK_POINT_METHODS)" \
 	  --flip-coef "$(VK_POINT_FLIP_COEF)" \
 	  --ppc "$(VK_POINT_PPC)" \
@@ -141,7 +141,7 @@ rankine:
 
 vk:
 	$(PYTHON) run_vk_point.py \
-	  --binary "$(BUILD_DIR)/bin/PIC" \
+	  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
 	  --methods "$(VK_POINT_METHODS)" \
 	  --flip-coef "$(VK_POINT_FLIP_COEF)" \
 	  --ppc "$(VK_POINT_PPC)" \

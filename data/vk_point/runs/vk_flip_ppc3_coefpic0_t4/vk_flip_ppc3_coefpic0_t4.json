@@ -16,7 +16,7 @@
   "write_norm_velocity": true,
   "write_smoke": false,
   "write_particles": false,
-  "folder": "/home/lpd/cours/master/pi/PICM/PostPro/data/vk_point/runs/vk_pic_ppc3_t4/raw",
+  "folder": "/home/lpd/cours/master/pi/PICM/PostPro/data/vk_point/runs/vk_flip_ppc3_coefpic0_t4/raw",
   "filename": "simulation",
   "velocityu": {
     "rectangle": {
@@ -54,10 +54,11 @@
     "max_iterations": 1000000,
     "tolerance": 0.0001
   },
-  "method": "pic",
+  "method": "flip",
   "freeSurface": false,
   "gravity": 0.0,
   "refill": true,
   "max_cfl": 0.5,
+  "coefpic": 0.0,
   "write_vorticity": false
 }

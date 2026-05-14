@@ -88,20 +88,38 @@ def scheduler_threads() -> int:
 # ---------------------------------------------------------------------------
 # Binary runner
 # ---------------------------------------------------------------------------
+def run_binary(command, env=None):
+    merged_env = {**os.environ, **(env or {})}
 
-def run_binary(command: List[str], env: Optional[dict] = None) -> subprocess.CompletedProcess:
-    """Run command with stdout/stderr captured, cwd=PICM_ROOT."""
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    return subprocess.run(
+    proc = subprocess.Popen(
         command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
         cwd=str(PICM_ROOT),
         env=merged_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
 
+    captured = []
+
+    # Stream output live
+    for line in proc.stdout:
+        print(line, end="")   # print immediately to terminal
+        captured.append(line)
+
+    proc.wait()
+
+    # Build a lightweight result-like object
+    class Result:
+        pass
+
+    result = Result()
+    result.returncode = proc.returncode
+    result.stdout = "".join(captured).encode()
+    result.stderr = b""
+
+    return result
 
 def build_binary(
     build_dir: Path,
