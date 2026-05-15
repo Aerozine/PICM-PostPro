@@ -33,8 +33,9 @@ REPORT_ANALYSIS  ?= vorticity
 PPC_PPC          ?= 1,2,3,4,5,6,7,8,9,10
 FREE_FALL_METHODS ?= pic,flip,apic
 VK_POINT_METHODS   ?= pic,flip,apic
-VK_POINT_FLIP_COEF ?= 0,0.01,0.05,0.1
+VK_POINT_FLIP_COEF ?= 0.01,0.05,0.1
 VK_POINT_PPC       ?= 3
+VK_TIMEOUT         ?= 600
 RANKINE_METHODS    ?= pic,flip,apic
 RANKINE_FLIP_COEF  ?= 0,0.01,0.05,0.1
 RANKINE_PPC        ?= 2
@@ -42,7 +43,13 @@ LAMB_METHODS       ?= pic,flip,apic
 LAMB_FLIP_COEF     ?= 0,0.01,0.05,0.1
 LAMB_PPC           ?= 3
 
-.PHONY: clean build sbatch run rankine vk lamb video plot
+.PHONY: clean clean-lamb clean-vk build sbatch run rankine vk lamb video plot
+
+clean-lamb:
+	rm -rf "$(DATA_DIR)/lamb"
+
+clean-vk:
+	rm -rf "$(DATA_DIR)/vk_point"
 
 clean:
 	rm -rf "$(DATA_DIR)" "$(IMG_DIR)" "$(VIDEO_DIR)"
@@ -141,11 +148,12 @@ rankine:
 
 vk:
 	$(PYTHON) run_vk_point.py \
-	  --binary "$(DEBUG_BUILD_DIR)/bin/PIC" \
+	  --binary "$(BUILD_DIR)/bin/PIC" \
 	  --methods "$(VK_POINT_METHODS)" \
 	  --flip-coef "$(VK_POINT_FLIP_COEF)" \
 	  --ppc "$(VK_POINT_PPC)" \
 	  --threads "$(THREADS)" \
+	  --timeout "$(VK_TIMEOUT)" \
 	  --keep-raw \
 	  --out "$(DATA_DIR)/vk_point"
 

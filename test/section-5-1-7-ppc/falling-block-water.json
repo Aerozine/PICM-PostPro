@@ -1,0 +1,45 @@
+{
+  "dx": 0.05,
+  "dy": 0.05,
+  "dt": 0.01,
+  "nx": 100,
+  "ny": 250,
+  "nt": 2500,
+  "ppcx": 3,
+  "ppcy": 3,
+  "density": 1000,
+  "sampling_rate": 10,
+  "write_u": true,
+  "write_v": true,
+  "write_p": true,
+  "write_div": true,
+  "write_norm_velocity": true,
+  "write_smoke": true,
+  "write_particles": true,
+  "write_vorticity": false,
+  "folder": "output/section-5-1-7-ppc",
+  "filename": "simulation",
+  "fluid": {
+    "rectangle": [
+      { "x1": "nx/2-19", "y1": "ny-40", "x2": "nx/2+19", "y2": "ny-10" },
+      { "x1": "1",        "y1": "1",      "x2": "nx",       "y2": "30"    }
+    ]
+  },
+  "solid": {
+    "rectangle": [
+      { "x1": "0",    "y1": "0",    "x2": "nx+1", "y2": "0"    },
+      { "x1": "0",    "y1": "ny+1", "x2": "nx+1", "y2": "ny+1" },
+      { "x1": "0",    "y1": "0",    "x2": "0",    "y2": "ny+1" },
+      { "x1": "nx+1", "y1": "0",    "x2": "nx+1", "y2": "ny+1" }
+    ]
+  },
+  "solver": {
+    "type": "cg",
+    "max_iterations": 10000,
+    "tolerance": 1e-2
+  },
+  "method": "pic",
+  "freeSurface": true,
+  "gravity": 1.0,
+  "refill": false
+}

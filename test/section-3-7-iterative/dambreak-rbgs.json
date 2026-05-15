@@ -1,0 +1,68 @@
+{
+  "dx": 0.05,
+  "dy": 0.05,
+  "dt": 0.01,
+  "nx": 200,
+  "ny": 220,
+  "nt": 400,
+  "ppcx": 5,
+  "ppcy": 5,
+  "density": 1000,
+  "sampling_rate": 400,
+  "write_u": false,
+  "write_v": false,
+  "write_p": false,
+  "write_div": false,
+  "write_norm_velocity": false,
+  "write_smoke": false,
+  "write_particles": true,
+  "write_vorticity": false,
+  "filename": "simulation",
+  "fluid": {
+    "rectangle": {
+      "x1": "1",
+      "y1": "1",
+      "x2": "nx/2",
+      "y2": "100"
+    }
+  },
+  "solid": {
+    "rectangle": [
+      {
+        "x1": "0",
+        "y1": "0",
+        "x2": "nx+1",
+        "y2": "0"
+      },
+      {
+        "x1": "0",
+        "y1": "ny+1",
+        "x2": "nx+1",
+        "y2": "ny+1"
+      },
+      {
+        "x1": "0",
+        "y1": "0",
+        "x2": "0",
+        "y2": "ny+1"
+      },
+      {
+        "x1": "nx+1",
+        "y1": "0",
+        "x2": "nx+1",
+        "y2": "ny+1"
+      }
+    ]
+  },
+  "method": "pic",
+  "freeSurface": true,
+  "gravity": 9.81,
+  "refill": false,
+  "kernelOrder": 2,
+  "folder": "output/section-3-7-iterative/rbgs",
+  "solver": {
+    "type": "red_black_gauss_seidel",
+    "max_iterations": 10000,
+    "tolerance": 0.01
+  }
+}

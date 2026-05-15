@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from picm_postpro.paths import DATA_DIR, PICM_ROOT
+from picm_postpro.paths import DATA_DIR, PICM_ROOT, POSTPRO_ROOT
 from picm_postpro.core import (
     build_binary,
     drop_run,
@@ -21,7 +21,7 @@ from picm_postpro.core import (
     write_csv,
 )
 
-DEFAULT_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "dambreak.json"
+DEFAULT_CONFIG = POSTPRO_ROOT / "test" / "section-3-7-iterative" / "dambreak.json"
 
 ITER_RE = re.compile(
     r"\[DEBUG\]\s+(\S+).*?(?:converged in\s+(\d+)\s+iters|reached maxIters\s*=\s*(\d+))"

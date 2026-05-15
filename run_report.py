@@ -23,7 +23,7 @@ except ImportError:
     def tqdm(it, **kwargs):  # type: ignore[misc]
         return it
 
-from picm_postpro.paths import DATA_DIR, PICM_ROOT
+from picm_postpro.paths import DATA_DIR, PICM_ROOT, POSTPRO_ROOT
 from picm_postpro.core import (
     build_binary,
     drop_run,
@@ -42,10 +42,10 @@ from picm_postpro.core import (
 # ---------------------------------------------------------------------------
 
 TESTS = {
-    "falling-block-water": PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
-    "freeFallInWater": PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json",
-    "dambreak": PICM_ROOT / "test" / "PIC" / "extra" / "dambreak.json",
-    "von-karman": PICM_ROOT / "test" / "PIC" / "section-5-5-1" / "von-karman.json",
+    "falling-block-water": POSTPRO_ROOT / "test" / "section-5-1-7-ppc" / "falling-block-water.json",
+    "freeFallInWater":     POSTPRO_ROOT / "test" / "section-5-1-7-ppc" / "falling-block-water.json",
+    "dambreak":            POSTPRO_ROOT / "test" / "section-3-7-iterative" / "dambreak.json",
+    "von-karman":          POSTPRO_ROOT / "test" / "section-6-2-vk" / "von-karman.json",
     "vases-communicants": (
         PICM_ROOT / "test" / "PIC" / "extra" / "vases-communicants" / "vases-communicants.json"
     ),

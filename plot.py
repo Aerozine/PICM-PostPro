@@ -32,6 +32,13 @@ MIXED_COEF_COLORS = {
     0.1: PALETTE["grey"],
 }
 
+# Lamb-Oseen analytical constants (must match lamb-oseen-vortex.json)
+_LO_NU    = 0.002
+_LO_T0    = 20.0
+_LO_OMEGA = 2.0
+_LO_RC    = 0.4
+_LO_GAMMA = 2.0 * math.pi * _LO_OMEGA * _LO_RC ** 2
+
 
 def method_label(method: str, flip_coef=None) -> str:
     if method == "pic":
@@ -997,6 +1004,209 @@ def plot_rankine(data_dir: Path, img_dir: Path, formats: tuple) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Lamb-Oseen vortex
+# ---------------------------------------------------------------------------
+
+def plot_lamb(data_dir: Path, img_dir: Path, formats: tuple) -> None:
+    from collections import defaultdict
+    out_base = img_dir / "lamb"
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    # ---- σ²(t) series ----
+    sig_rows = _load_or_warn(data_dir / "lamb" / "sigma.csv", "lamb/sigma")
+
+    if sig_rows is not None:
+        sig_series: Dict[tuple, list] = defaultdict(list)
+        for row in sig_rows:
+            t  = _try_float(row.get("time"))
+            sq = _try_float(row.get("sigma_sq"))
+            if t is None or sq is None:
+                continue
+            method   = row.get("method", "pic")
+            coef_val = _try_float(row.get("flip_coef"))
+            sig_series[(method, coef_val)].append((t, sq))
+
+        t_max = max(t for pts in sig_series.values() for t, _ in pts) if sig_series else 1.0
+        t_ana = np.linspace(0, t_max, 300)
+        sigma_sq_analytical = 4.0 * _LO_NU * (_LO_T0 + t_ana)
+
+        flip_sig_keys = sorted(
+            [(m, c) for (m, c) in sig_series if m == "flip" and c is not None and c > 1e-12],
+            key=lambda k: k[1],
+        )
+
+        def _plot_sig(keys, stem, title):
+            keys = [k for k in keys if k in sig_series]
+            if not keys:
+                return
+            fig, ax = plt.subplots()
+            ax.plot(t_ana, sigma_sq_analytical, color="black", linestyle="--",
+                    linewidth=1.4, label=rf"Analytical $\sigma^2=4\nu(t_0+t)$", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(sig_series[(method, coef_val)], key=lambda x: x[0])
+                ts, sqs = zip(*pts)
+                ax.plot(ts, sqs, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max)
+            style_ax(ax, xlabel=r"Simulation time $t$ [s]",
+                     ylabel=r"$\sigma^2(t)$ [m²]", title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_sig(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "lamb_sigma_methods", "",
+        )
+        _plot_sig(flip_sig_keys, "lamb_sigma_flip", "")
+
+        # ---- μ(t) = σ²(t) / 4(t₀+t) ----
+        mu_series: Dict[tuple, list] = defaultdict(list)
+        for key, pts in sig_series.items():
+            for t, sq in pts:
+                denom = 4.0 * (_LO_T0 + t)
+                if denom > 1e-12:
+                    mu_series[key].append((t, sq / denom))
+
+        def _plot_mu(keys, stem, title):
+            keys = [k for k in keys if k in mu_series]
+            if not keys:
+                return
+            fig, ax = plt.subplots()
+            ax.axhline(_LO_NU, color="black", linestyle="--", linewidth=1.4,
+                       label=rf"Analytical $\nu={_LO_NU}$ m²/s", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(mu_series[(method, coef_val)], key=lambda x: x[0])
+                ts, mus = zip(*pts)
+                ax.plot(ts, mus, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max)
+            style_ax(ax, xlabel=r"Simulation time $t$ [s]",
+                     ylabel=r"$\mu(t)=\sigma^2/(4(t_0+t))$ [m²/s]", title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_mu(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "lamb_mu_methods", "",
+        )
+        _plot_mu(flip_sig_keys, "lamb_mu_flip", "")
+
+        # ---- ν_eff(t) = (σ²(t)−σ²(0)) / 4t ----
+        sig0: Dict[tuple, float] = {}
+        for key, pts in sig_series.items():
+            pts_s = sorted(pts, key=lambda x: x[0])
+            if pts_s:
+                sig0[key] = pts_s[0][1]
+
+        nu_eff_series: Dict[tuple, list] = defaultdict(list)
+        for key, pts in sig_series.items():
+            sq0 = sig0.get(key)
+            if sq0 is None:
+                continue
+            for t, sq in pts:
+                if t > 1e-10:
+                    nu_eff_series[key].append((t, (sq - sq0) / (4.0 * t)))
+
+        def _plot_nu_eff(keys, stem, title):
+            keys = [k for k in keys if k in nu_eff_series]
+            if not keys:
+                return
+            fig, ax = plt.subplots()
+            ax.axhline(0.0, color="black", linestyle=":", linewidth=1.0,
+                       label="Perfect inviscid ($\\nu_{eff}=0$)", zorder=0)
+            ax.axhline(_LO_NU, color="black", linestyle="--", linewidth=1.4,
+                       label=rf"Physical $\nu={_LO_NU}$ m²/s", zorder=0)
+            for method, coef_val in keys:
+                pts = sorted(nu_eff_series[(method, coef_val)], key=lambda x: x[0])
+                ts, nus = zip(*pts)
+                ax.plot(ts, nus, color=method_color(method, coef_val),
+                        label=method_label(method, coef_val), lw=1.8)
+            ax.set_xlim(0, t_max)
+            style_ax(ax, xlabel=r"Simulation time $t$ [s]",
+                     ylabel=r"$\nu_{eff}(t)=(\sigma^2(t)-\sigma^2(0))/(4t)$ [m²/s]",
+                     title=title)
+            style_legend(ax)
+            save_figure(fig, out_base / stem, formats=formats)
+            plt.close(fig)
+            print(f"[plot] wrote {out_base / stem}.*")
+
+        _plot_nu_eff(
+            [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+             ("apic", None), ("apic", 0.0)],
+            "lamb_nueff_methods", "",
+        )
+        _plot_nu_eff(flip_sig_keys, "lamb_nueff_flip", "")
+
+    # ---- u_θ(r) radial profile ----
+    rp_rows = _load_or_warn(data_dir / "lamb" / "radial_profile.csv", "lamb/radial_profile")
+
+    if rp_rows is not None:
+        rp_series: Dict[tuple, list] = defaultdict(list)
+        t_final_val = 0.0
+        for row in rp_rows:
+            r  = _try_float(row.get("r"))
+            vt = _try_float(row.get("v_theta_sim"))
+            if r is None or vt is None:
+                continue
+            method   = row.get("method", "pic")
+            coef_val = _try_float(row.get("flip_coef"))
+            rp_series[(method, coef_val)].append((r, vt))
+            t_final_val = max(t_final_val, _try_float(row.get("time")) or 0.0)
+
+        if rp_series:
+            all_r = sorted({r for pts in rp_series.values() for r, _ in pts})
+            r_arr = np.array(all_r)
+            sig_sq_t0   = 4.0 * _LO_NU * _LO_T0
+            sig_sq_tfin = 4.0 * _LO_NU * (_LO_T0 + t_final_val)
+
+            def _vtheta_ana(r_arr, sig_sq):
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    return np.where(r_arr > 1e-12,
+                        (_LO_GAMMA / (2.0 * math.pi * r_arr))
+                        * (1.0 - np.exp(-r_arr ** 2 / sig_sq)), 0.0)
+
+            flip_rp_keys = sorted(
+                [(m, c) for (m, c) in rp_series if m == "flip" and c is not None and c > 1e-12],
+                key=lambda k: k[1],
+            )
+
+            def _plot_rp(keys, stem, title):
+                keys = [k for k in keys if k in rp_series]
+                if not keys:
+                    return
+                fig, ax = plt.subplots()
+                ax.plot(r_arr, _vtheta_ana(r_arr, sig_sq_t0), color="black",
+                        linestyle=":", linewidth=1.2, label=r"Analytical $t=0$", zorder=0)
+                ax.plot(r_arr, _vtheta_ana(r_arr, sig_sq_tfin), color="black",
+                        linestyle="--", linewidth=1.4,
+                        label=rf"Analytical $t_{{final}}={t_final_val:.1f}$ s", zorder=0)
+                for method, coef_val in keys:
+                    pts = sorted(rp_series[(method, coef_val)], key=lambda x: x[0])
+                    rs, vts = zip(*pts)
+                    ax.plot(rs, vts, color=method_color(method, coef_val),
+                            label=method_label(method, coef_val), lw=1.8)
+                style_ax(ax, xlabel=r"$r$ [m]",
+                         ylabel=r"$u_\theta(r)$ [m/s]", title=title)
+                style_legend(ax)
+                save_figure(fig, out_base / stem, formats=formats)
+                plt.close(fig)
+                print(f"[plot] wrote {out_base / stem}.*")
+
+            _plot_rp(
+                [("pic", None), ("pic", 0.0), ("flip", None), ("flip", 0.0),
+                 ("apic", None), ("apic", 0.0)],
+                "lamb_profile_methods", "",
+            )
+            _plot_rp(flip_rp_keys, "lamb_profile_flip", "")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -1023,6 +1233,7 @@ def main() -> int:
     plot_scaling_weak(data_dir, img_dir, formats)
     plot_vk_point(data_dir, img_dir, formats)
     plot_rankine(data_dir, img_dir, formats)
+    plot_lamb(data_dir, img_dir, formats)
 
     print("[plot] done")
     return 0

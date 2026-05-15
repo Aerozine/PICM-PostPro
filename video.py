@@ -12,7 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from picm_postpro.paths import PICM_ROOT, VIDEO_DIR
+from picm_postpro.paths import PICM_ROOT, POSTPRO_ROOT, VIDEO_DIR
 from picm_postpro.core import build_binary, run_binary, scheduler_threads, write_csv, read_csv
 
 try:
@@ -48,17 +48,19 @@ def _is_sim_config(path: Path) -> bool:
 
 
 def _config_name(config_path: Path) -> str:
-    """Generate a short name from a config path."""
-    # Try to make a unique name relative to PICM_ROOT
-    try:
-        rel = config_path.relative_to(PICM_ROOT)
-        parts = list(rel.parts)
-        # Drop 'test', leading dirs, keep meaningful stem
-        name_parts = [p for p in parts[:-1] if p not in ("test", "PIC", "FLIP", "APIC", "extra")]
-        name_parts.append(config_path.stem)
-        return "_".join(name_parts) if name_parts else config_path.stem
-    except ValueError:
-        return config_path.stem
+    """Generate a short name from a config path, mirroring the section folder structure."""
+    for root in (POSTPRO_ROOT, PICM_ROOT):
+        try:
+            rel = config_path.relative_to(root)
+            parts = list(rel.parts)
+            # Drop 'test' and method dirs; keep section and stem
+            skip = {"test", "PIC", "FLIP", "APIC", "GPIC", "FLAPIC", "SL", "extra"}
+            name_parts = [p for p in parts[:-1] if p not in skip]
+            name_parts.append(config_path.stem)
+            return "_".join(name_parts) if name_parts else config_path.stem
+        except ValueError:
+            continue
+    return config_path.stem
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +72,10 @@ def main() -> int:
     parser.add_argument("--binary", type=Path, default=None)
     parser.add_argument("--tests", default=None,
                         help="comma-separated JSON config paths or search roots; "
-                             "default: auto-discover from PICM_ROOT/test/")
+                             "default: auto-discover from PostPro/test/")
+    parser.add_argument("--json", type=Path, default=None,
+                        help="shorthand: run a single simulation config JSON "
+                             "(equivalent to --tests path/to/config.json)")
     parser.add_argument("--out", type=Path, default=VIDEO_DIR)
     parser.add_argument("--threads", type=int, default=None)
     parser.add_argument("--fps", type=int, default=30)
@@ -78,9 +83,10 @@ def main() -> int:
     parser.add_argument("--cmap", default="viridis")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--encoder", default="auto",
-                        choices=["auto", "libx265", "libx264"])
-    parser.add_argument("--crf", type=int, default=24)
+    parser.add_argument("--encoder", default="av1",
+                        help="encoder: av1 (default), auto, libx265, libx264, hardware")
+    parser.add_argument("--crf", type=int, default=28,
+                        help="quality (lower=better); AV1: 28=good, 18=near-lossless")
     parser.add_argument("--nt", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -103,7 +109,9 @@ def main() -> int:
     binary = binary.resolve()
 
     # Discover configs
-    if args.tests is not None:
+    if args.json is not None:
+        roots = [args.json]
+    elif args.tests is not None:
         roots = [Path(p.strip()) for p in args.tests.split(",") if p.strip()]
     else:
         roots = [PICM_ROOT / "test"]

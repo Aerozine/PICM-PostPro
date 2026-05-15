@@ -21,7 +21,7 @@ try:
 except ImportError:
     np = None
 
-from picm_postpro.paths import DATA_DIR, PICM_ROOT
+from picm_postpro.paths import DATA_DIR, PICM_ROOT, POSTPRO_ROOT
 from picm_postpro.core import (
     build_binary,
     drop_run,
@@ -36,7 +36,7 @@ from picm_postpro.core import (
 # Config
 # ---------------------------------------------------------------------------
 
-VK_CONFIG = PICM_ROOT / "test" / "PIC" / "section-5-5-1" / "von-karman.json"
+VK_CONFIG = POSTPRO_ROOT / "test" / "section-6-2-vk" / "von-karman.json"
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def _build_config(
     cfg["filename"] = "simulation"
     cfg["nt"] = nt
     cfg["sampling_rate"] = sampling_rate
-    cfg.setdefault("solver", {}).update({"type": "cg", "max_iterations": 1_000_000, "tolerance": 1e-4})
+    cfg.setdefault("solver", {}).update({"type": "cg", "max_iterations": 10_000, "tolerance": 1e-2})
 
     if method == "flip" and flip_coef is not None:
         cfg["coefpic"] = flip_coef
@@ -101,6 +101,7 @@ def _run_sim(
     run_dir: Path,
     threads: int,
     dry_run: bool,
+    timeout: Optional[float] = None,
 ) -> Tuple[str, float]:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "raw").mkdir(parents=True, exist_ok=True)
@@ -117,12 +118,15 @@ def _run_sim(
     cmd = [str(binary), str(config_path)]
     print(f"[run] {name} (threads={threads})")
     t0 = time.perf_counter()
-    result = run_binary(cmd, env)
+    result = run_binary(cmd, env, timeout=timeout)
     wall = time.perf_counter() - t0
 
     (run_dir / "stdout.log").write_bytes(result.stdout)
     (run_dir / "stderr.log").write_bytes(result.stderr)
 
+    if result.returncode == -15:
+        print(f"[run] TIMEOUT {name} ({wall:.1f}s) — using partial frames")
+        return "timeout", wall
     if result.returncode != 0:
         print(f"[run] FAILED {name} (exit {result.returncode})")
         return "failed", wall
@@ -183,8 +187,8 @@ def main() -> int:
     parser.add_argument("--flip-coef", default="0,0.01,0.05,0.1",
                         help="comma-separated coefpic values for FLIP")
     parser.add_argument("--nt", type=int, default=None)
-    parser.add_argument("--samples", type=int, default=200,
-                        help="number of output frames")
+    parser.add_argument("--samples", type=int, default=None,
+                        help="number of output frames (default: every step)")
     parser.add_argument("--threads", type=int, default=None)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--binary", type=Path, default=None)
@@ -193,6 +197,8 @@ def main() -> int:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--keep-raw", "--raw", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--timeout", type=float, default=600.0,
+                        help="wall-clock seconds per run before killing (default 600)")
     args = parser.parse_args()
 
     threads = args.threads if args.threads is not None else scheduler_threads()
@@ -221,7 +227,7 @@ def main() -> int:
     ny = int(base_config.get("ny", 80))
     nt = args.nt if args.nt is not None else int(base_config.get("nt", 1000))
     dt = float(base_config.get("dt", 0.01))
-    sampling_rate = max(1, nt // args.samples)
+    sampling_rate = max(1, nt // args.samples) if args.samples is not None else 1
 
     methods = [m.strip() for m in args.methods.split(",") if m.strip()]
     flip_coefs = [float(c.strip()) for c in args.flip_coef.split(",") if c.strip()]
@@ -256,9 +262,12 @@ def main() -> int:
             raw_dir, nt, sampling_rate, {},
         )
 
-        status, _ = _run_sim(binary, name, config, run_dir, threads, args.dry_run)
+        status, _ = _run_sim(binary, name, config, run_dir, threads, args.dry_run,
+                             timeout=args.timeout)
 
-        if args.dry_run or status != "ok":
+        if args.dry_run:
+            continue
+        if status not in ("ok", "timeout"):
             continue
 
         if np is None:

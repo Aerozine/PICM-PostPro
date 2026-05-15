@@ -132,22 +132,41 @@ def _vaapi_global_args() -> Tuple[str, ...]:
 def _software_candidates(crf: int, preset: str) -> List[_EncoderCandidate]:
     return [
         _EncoderCandidate(
+            "software AV1 (SVT)",
+            "libsvtav1",
+            (),
+            (
+                "-vcodec", "libsvtav1",
+                "-crf", str(crf),
+                "-preset", "6",   # SVT-AV1 preset: 0=slowest 13=fastest; 6 = good balance
+                "-pix_fmt", "yuv420p",
+                "-svtav1-params", "tune=0",  # tune=0: PSNR/visual quality
+            ),
+        ),
+        _EncoderCandidate(
+            "software AV1 (libaom)",
+            "libaom-av1",
+            (),
+            (
+                "-vcodec", "libaom-av1",
+                "-crf", str(crf),
+                "-b:v", "0",
+                "-cpu-used", "4",   # 0=best quality 8=fastest
+                "-row-mt", "1",
+                "-pix_fmt", "yuv420p",
+            ),
+        ),
+        _EncoderCandidate(
             "software HEVC",
             "libx265",
             (),
             (
-                "-vcodec",
-                "libx265",
-                "-preset",
-                preset,
-                "-crf",
-                str(crf),
-                "-pix_fmt",
-                "yuv420p",
-                "-tag:v",
-                "hvc1",
-                "-x265-params",
-                "log-level=error",
+                "-vcodec", "libx265",
+                "-preset", preset,
+                "-crf", str(crf),
+                "-pix_fmt", "yuv420p",
+                "-tag:v", "hvc1",
+                "-x265-params", "log-level=error",
             ),
         ),
         _EncoderCandidate(
@@ -155,14 +174,10 @@ def _software_candidates(crf: int, preset: str) -> List[_EncoderCandidate]:
             "libx264",
             (),
             (
-                "-vcodec",
-                "libx264",
-                "-preset",
-                preset,
-                "-crf",
-                str(crf),
-                "-pix_fmt",
-                "yuv420p",
+                "-vcodec", "libx264",
+                "-preset", preset,
+                "-crf", str(crf),
+                "-pix_fmt", "yuv420p",
             ),
         ),
     ]
@@ -302,15 +317,17 @@ def _encoder_candidates(encoder: str, quality: int, preset: str) -> List[_Encode
         return hardware
     if encoder in {"software", "cpu"}:
         return software
+    if encoder in {"av1"}:
+        return [c for c in software if "av1" in c.codec.lower()]
     if encoder in {"hevc", "h265", "x265"}:
-        return [software[0]]
+        return [c for c in software if c.codec == "libx265"]
     if encoder in {"h264", "x264"}:
-        return [software[1]]
+        return [c for c in software if c.codec == "libx264"]
     if encoder in by_codec:
         return [by_codec[encoder]]
     raise ValueError(
         "unknown encoder "
-        f"'{encoder}', expected auto, hardware, software, libx265, or libx264"
+        f"'{encoder}', expected auto, av1, hardware, software, libx265, libx264"
     )
 
 
@@ -598,65 +615,93 @@ def _rasterise(
 
 
 def _worker(args):
-    path, width, height, xlim, ylim, cmap_name, vmin, vmax, mode, background_rgb = args
+    path, width, height, xlim, ylim, cmap_name, global_vmin, global_vmax, mode, background_rgb = args
     x, y, speed = _load_vtp(Path(path))
-    return _rasterise(
-        x,
-        y,
-        speed,
-        width,
-        height,
-        xlim,
-        ylim,
-        cmap_name,
-        vmin,
-        vmax,
-        mode,
-        background_rgb,
+
+    # Per-frame speed range (dynamic colorbar)
+    if speed is not None and len(speed) > 0:
+        finite = speed[np.isfinite(speed)]
+        if finite.size > 0:
+            frame_vmin = float(np.min(finite))
+            frame_vmax = float(np.percentile(finite, 99.5))
+            if abs(frame_vmax - frame_vmin) < 1e-30:
+                frame_vmax = frame_vmin + 1.0
+        else:
+            frame_vmin, frame_vmax = global_vmin, global_vmax
+    else:
+        frame_vmin, frame_vmax = global_vmin, global_vmax
+
+    rgb_bytes = _rasterise(
+        x, y, speed, width, height, xlim, ylim,
+        cmap_name, frame_vmin, frame_vmax, mode, background_rgb,
     )
+    return rgb_bytes, frame_vmin, frame_vmax
 
 
-def _make_panel(
-    width,
-    panel_height,
-    dpi,
-    title,
-    cmap_name,
-    vmin,
-    vmax,
-    label,
-    background_color,
-    foreground_color,
+_cb_fig_cache: dict = {}  # key → (fig, scalar, cb)
+
+
+def _colorbar_left(
+    height: int,
+    cb_width: int,
+    vmin: float,
+    vmax: float,
+    cmap_name: str,
+    label: str,
+    title: str,
+    background_color: str,
+    foreground_color: str,
     background_rgb,
-):
-    fig, ax = plt.subplots(figsize=(width / dpi, panel_height / dpi), dpi=dpi)
-    fig.patch.set_facecolor(background_color)
-    ax.set_visible(False)
-    scalar = plt.cm.ScalarMappable(cmap=_cmap(cmap_name), norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
-    scalar.set_array([])
-    colorbar = fig.colorbar(scalar, ax=ax, orientation="horizontal", fraction=1.0, pad=0.0, aspect=40)
-    colorbar.set_label(label, color=foreground_color, fontsize=8)
-    colorbar.ax.xaxis.set_tick_params(color=foreground_color, labelsize=7)
-    plt.setp(colorbar.ax.xaxis.get_ticklabels(), color=foreground_color)
-    colorbar.outline.set_edgecolor(foreground_color)
-    fig.suptitle(title, color=foreground_color, fontsize=9, y=0.98)
+    dpi: int = 100,
+) -> np.ndarray:
+    """Render a vertical colorbar strip (height × cb_width, 3) per-frame, with caching."""
+    key = (height, cb_width, cmap_name, dpi, background_color, foreground_color)
+    if key not in _cb_fig_cache:
+        fig, ax = plt.subplots(figsize=(cb_width / dpi, height / dpi), dpi=dpi)
+        fig.patch.set_facecolor(background_color)
+        ax.set_visible(False)
+        scalar = plt.cm.ScalarMappable(
+            cmap=_cmap(cmap_name), norm=mcolors.Normalize(vmin=0.0, vmax=1.0)
+        )
+        scalar.set_array([])
+        cb = fig.colorbar(
+            scalar, ax=ax, orientation="vertical",
+            fraction=0.55, pad=0.04,
+            aspect=max(6, height // max(1, cb_width) * 5),
+        )
+        cb.set_label(label, color=foreground_color, fontsize=6, rotation=90, labelpad=3)
+        cb.ax.tick_params(color=foreground_color, labelsize=6, labelcolor=foreground_color)
+        cb.outline.set_edgecolor(foreground_color)
+        fig.tight_layout(pad=0.2)
+        _cb_fig_cache[key] = (fig, scalar, cb)
+
+    fig, scalar, cb = _cb_fig_cache[key]
+    scalar.norm.vmin = vmin
+    scalar.norm.vmax = vmax
+    cb.update_normal(scalar)
+    # small title at top
+    for txt in fig.texts:
+        txt.remove()
+    if title:
+        fig.text(0.5, 0.995, title, ha="center", va="top",
+                 color=foreground_color, fontsize=5, transform=fig.transFigure,
+                 clip_on=True)
     fig.canvas.draw()
-    rgba = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
-    rgba = rgba.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+    rgba = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape(
+        fig.canvas.get_width_height()[::-1] + (4,)
+    )
     panel = rgba[..., :3].copy()
-    plt.close(fig)
-    if panel.shape[1] != width or panel.shape[0] != panel_height:
+    # Resize to exact (height, cb_width) if needed
+    if panel.shape[:2] != (height, cb_width):
         try:
             from PIL import Image
-
-            panel = np.array(Image.fromarray(panel).resize((width, panel_height), Image.LANCZOS))
+            panel = np.array(Image.fromarray(panel).resize((cb_width, height), Image.LANCZOS))
         except ImportError:
-            resized = np.empty((panel_height, width, 3), np.uint8)
-            resized[:] = np.asarray(background_rgb, dtype=np.uint8)
-            h = min(panel_height, panel.shape[0])
-            w = min(width, panel.shape[1])
-            resized[:h, :w] = panel[:h, :w]
-            panel = resized
+            out = np.full((height, cb_width, 3), np.asarray(background_rgb, np.uint8), np.uint8)
+            h = min(height, panel.shape[0])
+            w = min(cb_width, panel.shape[1])
+            out[:h, :w] = panel[:h, :w]
+            panel = out
     return panel
 
 
@@ -694,10 +739,11 @@ def build_mp4(
     n_workers: Optional[int] = None,
     prefetch: Optional[int] = None,
     margin: float = 0.08,
-    encoder: str = "auto",
-    crf: int = 24,
+    encoder: str = "av1",
+    crf: int = 28,
     preset: str = "veryslow",
     background: str = "white",
+    colorbar_width: int = 80,
 ) -> None:
     paths = list(vtp_paths)
     if not paths:
@@ -707,73 +753,62 @@ def build_mp4(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     background_rgb, background_color, foreground_color = _background_palette(background)
 
-    print("[video] scanning particle frames")
+    print("[video] scanning particle frames for spatial extent")
     scanned_xlim, scanned_ylim, scanned_vmin, scanned_vmax = _scan(paths)
     xlim = tuple(xlim) if xlim is not None else scanned_xlim
     ylim = tuple(ylim) if ylim is not None else scanned_ylim
-    vmin = scanned_vmin if vmin is None else vmin
-    vmax = scanned_vmax if vmax is None else vmax
-    if abs(float(vmax) - float(vmin)) < 1e-30:
-        vmax = float(vmin) + 1.0
+    # global vmin/vmax used as fallback when a frame has no particles
+    global_vmin = scanned_vmin if vmin is None else float(vmin)
+    global_vmax = scanned_vmax if vmax is None else float(vmax)
+    if abs(global_vmax - global_vmin) < 1e-30:
+        global_vmax = global_vmin + 1.0
 
-    panel_height = max(60, int(width * 0.06))
-    panel_height += panel_height % 2
-    frame_height = max(2, height - panel_height)
-    frame_height += frame_height % 2
-    total_height = panel_height + frame_height
-    xlim, ylim = _fit_limits(xlim, ylim, width, frame_height, margin)
-    label = "Mean particle speed |v|" if mode == "speed" else "log(1 + particles per pixel)"
-    panel = _make_panel(
-        width,
-        panel_height,
-        dpi,
-        title,
-        cmap_name,
-        float(vmin),
-        float(vmax),
-        label,
-        background_color,
-        foreground_color,
-        background_rgb,
-    )
-    frame_background = np.empty((frame_height, width, 3), np.uint8)
-    frame_background[:] = np.asarray(background_rgb, dtype=np.uint8)
-    template = np.concatenate(
-        [frame_background, panel],
-        axis=0,
-    )
+    # Layout: colorbar on the left, particles on the right
+    cb_width = max(60, colorbar_width)
+    cb_width += cb_width % 2
+    frame_width = max(2, width - cb_width)
+    frame_width += frame_width % 2
+    total_width = cb_width + frame_width
+
+    xlim, ylim = _fit_limits(xlim, ylim, frame_width, height, margin)
+    label = "Mean speed |v|" if mode == "speed" else "log(1 + count)"
 
     n_workers = max(1, int(n_workers or os.cpu_count() or 1))
     prefetch = max(1, int(prefetch or n_workers * 2))
     worker_args = [
         (
             str(path),
-            width,
-            frame_height,
+            frame_width,
+            height,
             xlim,
             ylim,
             cmap_name,
-            float(vmin),
-            float(vmax),
+            global_vmin,
+            global_vmax,
             mode,
             background_rgb,
         )
         for path in paths
     ]
-    process = _open_ffmpeg(out_path, width, total_height, fps, encoder, crf, preset)
+    process = _open_ffmpeg(out_path, total_width, height, fps, encoder, crf, preset)
     if process.stdin is None:
         raise RuntimeError("ffmpeg stdin is not available")
+
+    def _assemble(rgb_bytes, frame_vmin, frame_vmax):
+        """Combine left colorbar + right particle frame into one row."""
+        cb = _colorbar_left(
+            height, cb_width, frame_vmin, frame_vmax, cmap_name,
+            label, title, background_color, foreground_color, background_rgb, dpi,
+        )
+        particles = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, frame_width, 3)
+        return np.concatenate([cb, particles], axis=1)
 
     outer = tqdm(total=len(worker_args), desc="  encoding", unit="frame")
     if n_workers == 1:
         try:
             for args in worker_args:
-                rgb_bytes = _worker(args)
-                frame = template.copy()
-                frame[:frame_height] = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(
-                    frame_height, width, 3
-                )
-                process.stdin.write(frame.tobytes())
+                rgb_bytes, fvmin, fvmax = _worker(args)
+                process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
                 outer.update(1)
         finally:
             outer.close()
@@ -797,14 +832,10 @@ def build_mp4(
 
         for _index in range(len(worker_args)):
             _, future = pending.popleft()
-            rgb_bytes = future.result()
+            rgb_bytes, fvmin, fvmax = future.result()
             submit_next(next_submit)
             next_submit += 1
-            frame = template.copy()
-            frame[:frame_height] = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(
-                frame_height, width, 3
-            )
-            process.stdin.write(frame.tobytes())
+            process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
             outer.set_postfix(queue=len(pending))
             outer.update(1)
 
@@ -836,17 +867,19 @@ def main() -> int:
     parser.add_argument("--ylim", type=float, nargs=2, metavar=("YMIN", "YMAX"))
     parser.add_argument(
         "--encoder",
-        default="auto",
-        help="ffmpeg encoder policy: auto, hardware, software, libx265, or libx264",
+        default="av1",
+        help="ffmpeg encoder: av1 (default), auto, hardware, software, libx265, libx264",
     )
     parser.add_argument(
         "--crf",
         type=int,
-        default=24,
-        help="constant-quality value; lower is higher quality and larger files",
+        default=28,
+        help="constant-quality value; lower = higher quality. AV1: 28≈good, 18≈near-lossless",
     )
     parser.add_argument("--preset", default="veryslow")
     parser.add_argument("--background", choices=("white", "black"), default="white")
+    parser.add_argument("--colorbar-width", type=int, default=80,
+                        help="width in pixels of the left-side colorbar strip")
     args = parser.parse_args()
 
     if not args.pvd.exists():
@@ -877,6 +910,7 @@ def main() -> int:
         crf=args.crf,
         preset=args.preset,
         background=args.background,
+        colorbar_width=args.colorbar_width,
     )
     return 0
 

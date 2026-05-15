@@ -32,7 +32,7 @@ try:
 except ImportError:
     np = None
 
-from picm_postpro.paths import DATA_DIR, PICM_ROOT
+from picm_postpro.paths import DATA_DIR, PICM_ROOT, POSTPRO_ROOT
 from picm_postpro.core import (
     build_binary,
     drop_run,
@@ -43,7 +43,7 @@ from picm_postpro.core import (
     write_csv,
 )
 
-LAMB_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "lamb-oseen-vortex.json"
+LAMB_CONFIG = POSTPRO_ROOT / "test" / "section-6-5-lamb" / "lamb-oseen-vortex.json"
 N_RADIAL_BINS = 150
 
 
@@ -161,7 +161,31 @@ def _pvd_datasets(pvd_path: Path):
 # Extraction
 # ---------------------------------------------------------------------------
 
-def _staggered_to_cc(u_field, v_field, nx, ny):
+# r_peak² = _RPEAK_COEF * σ²  (from du_θ/dr = 0 on Lamb-Oseen profile)
+_RPEAK_COEF = 1.2564
+
+
+def _sigma_sq_from_peak(r_centers: np.ndarray, vt_mean: np.ndarray) -> float:
+    """Estimate σ² from the peak radius of the binned u_θ(r) profile.
+
+    Uses sub-bin quadratic interpolation around the maximum for accuracy.
+    Returns nan if the peak is ambiguous (flat profile).
+    """
+    i_pk = int(np.argmax(vt_mean))
+    if vt_mean[i_pk] < 1e-12:
+        return float("nan")
+    if 1 <= i_pk < len(vt_mean) - 1:
+        a, b, c = vt_mean[i_pk - 1], vt_mean[i_pk], vt_mean[i_pk + 1]
+        denom = a - 2.0 * b + c
+        delta = 0.5 * (a - c) / denom if abs(denom) > 1e-30 else 0.0
+        dr = r_centers[1] - r_centers[0]
+        r_peak = r_centers[i_pk] + delta * dr
+    else:
+        r_peak = r_centers[i_pk]
+    return r_peak ** 2 / _RPEAK_COEF
+
+
+def _staggered_to_cc(u_field, v_field, nx: int, ny: int):
     u_cc = (0.5 * (u_field[:, :-1] + u_field[:, 1:])
             if u_field.shape[1] == nx + 1 else u_field[:ny, :nx])
     v_cc = (0.5 * (v_field[:-1, :] + v_field[1:, :])
@@ -174,32 +198,59 @@ def _extract_sigma_series(
     dx: float, dy: float, nx: int, ny: int,
     cx_phys: float, cy_phys: float,
     nu: float, t0: float,
+    r_max_phys: float,
+    n_bins: int = 200,
 ) -> List[dict]:
-    """
-    Compute σ²(t) from the vorticity field second moment at every snapshot.
-    Also return Δσ² = σ²_num − σ²_analytical and instantaneous ν_num.
+    """Compute σ²(t) from the peak of the u_θ(r) profile at each u+v snapshot.
+
+    Fitting u_θ(r) directly (not curl) avoids the P2G/pressure-solve artefacts
+    that contaminate the vorticity-based second-moment approach.
     """
     jj, ii = np.mgrid[0:ny, 0:nx]
-    x_phys = (ii + 0.5) * dx
-    y_phys = (jj + 0.5) * dy
-    r_sq   = (x_phys - cx_phys) ** 2 + (y_phys - cy_phys) ** 2
+    x_rel = (ii + 0.5) * dx - cx_phys
+    y_rel = (jj + 0.5) * dy - cy_phys
+    r_grid = np.sqrt(x_rel ** 2 + y_rel ** 2)
+
+    # Only use cells within 80 % of confinement radius
+    r_inner = 0.8 * r_max_phys
+    interior = r_grid < r_inner
+
+    r_bins   = np.linspace(0.0, r_inner, n_bins + 1)
+    r_centers = 0.5 * (r_bins[:-1] + r_bins[1:])
+
+    u_pvd = list(_pvd_datasets(raw_dir / "u.pvd"))
+    v_pvd = list(_pvd_datasets(raw_dir / "v.pvd"))
+    if not u_pvd or not v_pvd:
+        return []
 
     rows: List[dict] = []
-    for i, (t_sim, fpath) in enumerate(_pvd_datasets(raw_dir / "vorticity.pvd")):
+    for i, ((tu, u_path), (tv, v_path)) in enumerate(zip(u_pvd, v_pvd)):
         try:
-            omega_z = read_vti_field(fpath, "vorticity")
+            u_f = read_vti_field(u_path, "u")
+            v_f = read_vti_field(v_path, "v")
         except Exception:
             continue
 
-        pos      = omega_z > 0.0
-        sum_w    = float(np.sum(omega_z[pos]) * dx * dy)
-        if sum_w < 1e-12:
+        u_cc, v_cc = _staggered_to_cc(u_f, v_f, nx, ny)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            v_theta = np.where(r_grid > 1e-12,
+                               (-u_cc * y_rel + v_cc * x_rel) / r_grid, 0.0)
+
+        # Bin u_θ by radius
+        vt_mean = np.zeros(n_bins)
+        for k in range(n_bins):
+            mask = interior & (r_grid >= r_bins[k]) & (r_grid < r_bins[k + 1])
+            if mask.any():
+                vt_mean[k] = float(np.mean(v_theta[mask]))
+
+        sigma_sq = _sigma_sq_from_peak(r_centers, vt_mean)
+        if math.isnan(sigma_sq):
             continue
 
-        sigma_sq  = float(np.sum(r_sq[pos] * omega_z[pos]) * dx * dy) / sum_w
+        t_sim = tu
         sigma_sq_analytical = lamb_oseen_sigma_sq(nu, t0, t_sim)
         delta_sigma_sq = sigma_sq - sigma_sq_analytical
-        # instantaneous ν_num = Δσ² / (4·t_sim) for t_sim > 0
         nu_num = delta_sigma_sq / (4.0 * t_sim) if t_sim > 1e-9 else float("nan")
 
         rows.append({
@@ -282,17 +333,19 @@ def main() -> int:
     parser.add_argument("--ppc",       type=int, default=3)
     parser.add_argument("--flip-coef", default="0,0.01,0.05,0.1")
     parser.add_argument("--nt",        type=int, default=None)
-    parser.add_argument("--samples",   type=int, default=30,
-                        help="number of vorticity output frames")
+    parser.add_argument("--samples",   type=int, default=None,
+                        help="number of output frames (default: every step)")
     parser.add_argument("--threads",   type=int, default=None)
     parser.add_argument("--out",       type=Path, default=None)
     parser.add_argument("--binary",    type=Path, default=None)
     parser.add_argument("--build-dir", type=Path,
                         default=PICM_ROOT / "build-release")
     parser.add_argument("--build-jobs",type=int,  default=None)
-    parser.add_argument("--force",     action="store_true")
-    parser.add_argument("--keep-raw",  action="store_true")
-    parser.add_argument("--dry-run",   action="store_true")
+    parser.add_argument("--force",        action="store_true")
+    parser.add_argument("--keep-raw",     action="store_true")
+    parser.add_argument("--dry-run",      action="store_true")
+    parser.add_argument("--extract-only", action="store_true",
+                        help="skip simulation; re-extract from existing raw dirs")
     args = parser.parse_args()
 
     threads    = args.threads    or scheduler_threads()
@@ -320,7 +373,7 @@ def main() -> int:
     nx = int(base_config.get("nx", 256))
     ny = int(base_config.get("ny", 256))
     nt = args.nt or int(base_config.get("nt", 600))
-    sampling_rate = max(1, nt // args.samples)
+    sampling_rate = max(1, nt // args.samples) if args.samples is not None else 1
 
     lo  = base_config.get("lamb_oseen_vortex", {})
     nu  = float(lo.get("viscosity",     0.002))
@@ -369,21 +422,27 @@ def main() -> int:
     runs_dir = out_dir / "runs"
 
     for name, method, coef in run_specs:
-        if not args.force and name in completed:
-            print(f"[skip] {name}")
-            continue
-
         run_dir = runs_dir / name
         raw_dir = run_dir / "raw"
 
-        config = _build_config(
-            base_config, method, args.ppc, coef,
-            raw_dir, nt, sampling_rate, {},
-        )
+        if args.extract_only:
+            if not raw_dir.exists():
+                print(f"[skip] {name}: no raw dir, skipping extract-only")
+                continue
+            print(f"[extract-only] {name}")
+        else:
+            if not args.force and name in completed:
+                print(f"[skip] {name}")
+                continue
 
-        status, _ = _run_sim(binary, name, config, run_dir, threads, args.dry_run)
-        if args.dry_run or status != "ok":
-            continue
+            config = _build_config(
+                base_config, method, args.ppc, coef,
+                raw_dir, nt, sampling_rate, {},
+            )
+
+            status, _ = _run_sim(binary, name, config, run_dir, threads, args.dry_run)
+            if args.dry_run or status != "ok":
+                continue
         if np is None:
             print(f"[warn] numpy not available — raw kept in {raw_dir}")
             continue
@@ -393,7 +452,7 @@ def main() -> int:
 
         # σ² time series
         sig_data = _extract_sigma_series(
-            raw_dir, dx, dy, nx, ny, cx_phys, cy_phys, nu, t0)
+            raw_dir, dx, dy, nx, ny, cx_phys, cy_phys, nu, t0, r_max_phys)
         if not sig_data:
             print(f"[warn] no vorticity data for {name} — rebuild binary?")
             continue

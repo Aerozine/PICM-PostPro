@@ -21,7 +21,7 @@ try:
 except ImportError:
     np = None
 
-from picm_postpro.paths import DATA_DIR, PICM_ROOT
+from picm_postpro.paths import DATA_DIR, PICM_ROOT, POSTPRO_ROOT
 from picm_postpro.core import (
     build_binary,
     read_csv,
@@ -36,8 +36,8 @@ from picm_postpro.core import (
 # Config paths
 # ---------------------------------------------------------------------------
 
-AIR_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "freeFall.json"
-WATER_CONFIG = PICM_ROOT / "test" / "PIC" / "extra" / "freeFallInWater.json"
+AIR_CONFIG   = POSTPRO_ROOT / "test" / "PIC" / "extra" / "freeFall.json"
+WATER_CONFIG = POSTPRO_ROOT / "test" / "section-5-1-7-ppc" / "falling-block-water.json"
 
 GRAVITY = 9.81  # default; overridden by config "gravity" if present
 

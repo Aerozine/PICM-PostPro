@@ -88,7 +88,14 @@ def scheduler_threads() -> int:
 # ---------------------------------------------------------------------------
 # Binary runner
 # ---------------------------------------------------------------------------
-def run_binary(command, env=None):
+def run_binary(command, env=None, timeout=None):
+    """Run *command* and stream its stdout live.
+
+    *timeout*: wall-clock seconds after which the process is killed.
+    Returns a result object with .returncode and .stdout (bytes).
+    """
+    import threading
+
     merged_env = {**os.environ, **(env or {})}
 
     proc = subprocess.Popen(
@@ -103,22 +110,30 @@ def run_binary(command, env=None):
 
     captured = []
 
-    # Stream output live
-    for line in proc.stdout:
-        print(line, end="")   # print immediately to terminal
-        captured.append(line)
+    def _drain():
+        for line in proc.stdout:
+            print(line, end="", flush=True)
+            captured.append(line)
+
+    t = threading.Thread(target=_drain, daemon=True)
+    t.start()
+    t.join(timeout)
+
+    timed_out = t.is_alive()
+    if timed_out:
+        print(f"\n[timeout] killing after {timeout}s — partial results kept", flush=True)
+        proc.kill()
+        t.join(5)
 
     proc.wait()
 
-    # Build a lightweight result-like object
     class Result:
         pass
 
     result = Result()
-    result.returncode = proc.returncode
+    result.returncode = -15 if timed_out else proc.returncode
     result.stdout = "".join(captured).encode()
     result.stderr = b""
-
     return result
 
 def build_binary(

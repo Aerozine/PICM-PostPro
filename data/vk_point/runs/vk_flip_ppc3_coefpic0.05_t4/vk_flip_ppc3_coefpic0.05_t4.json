@@ -4,11 +4,11 @@
   "dt": 0.01,
   "nx": 160,
   "ny": 80,
-  "nt": 1000,
+  "nt": 2000,
   "ppcx": 3,
   "ppcy": 3,
   "density": 1000,
-  "sampling_rate": 5,
+  "sampling_rate": 1,
   "write_u": false,
   "write_v": false,
   "write_p": false,
@@ -16,7 +16,7 @@
   "write_norm_velocity": true,
   "write_smoke": false,
   "write_particles": false,
-  "folder": "/home/lpd/cours/master/pi/PICM/PostPro/data/vk_point/runs/vk_flip_ppc3_coefpic0_t4/raw",
+  "folder": "/home/lpd/cours/master/pi/PICM/PostPro/data/vk_point/runs/vk_flip_ppc3_coefpic0.05_t4/raw",
   "filename": "simulation",
   "velocityu": {
     "rectangle": {
@@ -51,14 +51,14 @@
   },
   "solver": {
     "type": "cg",
-    "max_iterations": 1000000,
-    "tolerance": 0.0001
+    "max_iterations": 10000,
+    "tolerance": 0.01
   },
   "method": "flip",
   "freeSurface": false,
   "gravity": 0.0,
   "refill": true,
   "max_cfl": 0.5,
-  "coefpic": 0.0,
+  "coefpic": 0.05,
   "write_vorticity": false
 }
