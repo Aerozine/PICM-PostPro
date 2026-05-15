@@ -638,7 +638,7 @@ def _worker(args):
     return rgb_bytes, frame_vmin, frame_vmax
 
 
-_cb_fig_cache: dict = {}  # key → (fig, scalar, cb)
+_cb_fig_cache: dict = {}  # key → (fig, scalar, cb, formatter)
 
 
 def _colorbar_left(
@@ -648,44 +648,53 @@ def _colorbar_left(
     vmax: float,
     cmap_name: str,
     label: str,
-    title: str,
+    title: str,           # kept for API compat, not rendered
     background_color: str,
     foreground_color: str,
     background_rgb,
     dpi: int = 100,
 ) -> np.ndarray:
-    """Render a vertical colorbar strip (height × cb_width, 3) per-frame, with caching."""
+    """Render a fixed-layout vertical colorbar strip (height × cb_width, 3).
+
+    Gradient bar on the far left; ticks and label on the right (facing video).
+    Uses a fixed-width formatter so tick label width never changes between frames.
+    """
+    from matplotlib.ticker import FuncFormatter
+
     key = (height, cb_width, cmap_name, dpi, background_color, foreground_color)
     if key not in _cb_fig_cache:
-        fig, ax = plt.subplots(figsize=(cb_width / dpi, height / dpi), dpi=dpi)
+        fig = plt.figure(figsize=(cb_width / dpi, height / dpi), dpi=dpi)
         fig.patch.set_facecolor(background_color)
-        ax.set_visible(False)
+
+        # Manually position the colorbar axes so nothing can shift it.
+        # [left, bottom, width, height] in figure-fraction coords.
+        # Narrow bar on the left; the remaining width holds tick labels + label.
+        cax = fig.add_axes([0.04, 0.06, 0.22, 0.88])
+
         scalar = plt.cm.ScalarMappable(
             cmap=_cmap(cmap_name), norm=mcolors.Normalize(vmin=0.0, vmax=1.0)
         )
         scalar.set_array([])
-        cb = fig.colorbar(
-            scalar, ax=ax, orientation="vertical",
-            fraction=0.55, pad=0.04,
-            aspect=max(6, height // max(1, cb_width) * 5),
-        )
-        cb.set_label(label, color=foreground_color, fontsize=6, rotation=90, labelpad=3)
-        cb.ax.tick_params(color=foreground_color, labelsize=6, labelcolor=foreground_color)
-        cb.outline.set_edgecolor(foreground_color)
-        fig.tight_layout(pad=0.2)
-        _cb_fig_cache[key] = (fig, scalar, cb)
+        cb = fig.colorbar(scalar, cax=cax)
 
-    fig, scalar, cb = _cb_fig_cache[key]
+        # "1.23e+02" — always 8 chars, no separate offset text, no width shift
+        formatter = FuncFormatter(lambda x, _: f"{x:.2e}")
+        cb.ax.yaxis.set_major_formatter(formatter)
+
+        # Ticks and label on the RIGHT (between bar and video content)
+        cb.ax.yaxis.set_ticks_position("right")
+        cb.ax.yaxis.set_label_position("right")
+        cb.set_label(label, color=foreground_color, fontsize=6, rotation=90, labelpad=4)
+        cb.ax.tick_params(color=foreground_color, labelsize=5, labelcolor=foreground_color)
+        cb.outline.set_edgecolor(foreground_color)
+
+        _cb_fig_cache[key] = (fig, scalar, cb, formatter)
+
+    fig, scalar, cb, formatter = _cb_fig_cache[key]
     scalar.norm.vmin = vmin
     scalar.norm.vmax = vmax
     cb.update_normal(scalar)
-    # small title at top
-    for txt in fig.texts:
-        txt.remove()
-    if title:
-        fig.text(0.5, 0.995, title, ha="center", va="top",
-                 color=foreground_color, fontsize=5, transform=fig.transFigure,
-                 clip_on=True)
+    cb.ax.yaxis.set_major_formatter(formatter)  # re-apply; update_normal may reset it
     fig.canvas.draw()
     rgba = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).reshape(
         fig.canvas.get_width_height()[::-1] + (4,)
@@ -719,6 +728,227 @@ def _open_ffmpeg(
         _ffmpeg_command(out_path, width, height, fps, candidate),
         stdin=subprocess.PIPE,
     )
+
+
+def _load_vti(path: Path):
+    """Load a PICM VTI (ImageData/CellData) file.
+
+    Returns (field, nx, ny) where field is shape (ny, nx) float32, or (None, 0, 0) on error.
+    Data ordering from C++: j-outer, i-inner → reshaped as (ny, nx) directly.
+    """
+    raw = path.read_bytes()
+    try:
+        root = ET.fromstring(_extract_xml(raw))
+    except ET.ParseError as exc:
+        tqdm.write(f"  [warn] {path.name}: {exc}")
+        return None, 0, 0
+
+    compressed = "compressor" in root.attrib
+    img_el = root.find(".//ImageData")
+    if img_el is None:
+        return None, 0, 0
+
+    extent = list(map(int, img_el.get("WholeExtent", "0 1 0 1 0 0").split()))
+    nx, ny = extent[1], extent[3]
+    if nx <= 0 or ny <= 0:
+        return None, 0, 0
+
+    try:
+        data_start = _bin_start(raw)
+    except ValueError:
+        return None, 0, 0
+
+    for da in root.iter("DataArray"):
+        dtype = np.float32 if da.get("type", "Float64") == "Float32" else np.float64
+        raw_data = _decode(raw, data_start, int(da.get("offset", 0)), compressed, dtype)
+        if raw_data is not None and raw_data.size >= nx * ny:
+            field = raw_data[: nx * ny].reshape(ny, nx).astype(np.float32)
+            return field, nx, ny
+        break
+
+    return None, 0, 0
+
+
+def _scan_vti(paths: List[Path], n_scan: int = 12):
+    """Return (global_vmin, global_vmax) by sampling a subset of VTI frames."""
+    if not paths:
+        return 0.0, 1.0
+    indices = sorted(
+        set([0] + list(range(0, len(paths), max(1, len(paths) // n_scan))) + [len(paths) - 1])
+    )
+    all_vals = []
+    with tqdm(indices, desc="  scanning", unit="frame", leave=False) as progress:
+        for i in progress:
+            field, _, _ = _load_vti(paths[i])
+            if field is not None:
+                finite = field[np.isfinite(field)]
+                if finite.size > 0:
+                    all_vals.append(finite)
+    if not all_vals:
+        return 0.0, 1.0
+    combined = np.concatenate(all_vals)
+    vmin = float(np.nanmin(combined))
+    vmax = float(np.nanpercentile(combined, 99.5))
+    if abs(vmax - vmin) < 1e-30:
+        vmax = vmin + 1.0
+    return vmin, vmax
+
+
+def _rasterise_vti(
+    field,
+    width: int,
+    height: int,
+    cmap_name: str,
+    vmin: float,
+    vmax: float,
+    background_rgb,
+) -> bytes:
+    """Render a 2D scalar field (ny, nx) to RGB bytes of size (height × width × 3)."""
+    if field is None:
+        img = np.empty((height, width, 3), np.uint8)
+        img[:] = np.asarray(background_rgb, np.uint8)
+        return img.tobytes()
+
+    norm_field = (field.astype(np.float32) - vmin) / max(float(vmax - vmin), 1e-30)
+    norm_field = np.clip(norm_field, 0.0, 1.0)
+    rgba = _cmap(cmap_name)(norm_field)
+    rgb = (rgba[..., :3] * 255).astype(np.uint8)
+    rgb = rgb[::-1, :, :]  # VTK j=0 is bottom; image row 0 is top
+
+    try:
+        from PIL import Image as PILImage
+        out = np.array(PILImage.fromarray(rgb).resize((width, height), PILImage.LANCZOS))
+    except ImportError:
+        ny_src, nx_src = rgb.shape[:2]
+        ys = np.clip((np.arange(height) * ny_src / height).astype(int), 0, ny_src - 1)
+        xs = np.clip((np.arange(width) * nx_src / width).astype(int), 0, nx_src - 1)
+        out = rgb[np.ix_(ys, xs)]
+    return out.tobytes()
+
+
+def _worker_vti(args):
+    path, width, height, cmap_name, global_vmin, global_vmax, background_rgb = args
+    field, _, _ = _load_vti(Path(path))
+
+    if field is not None:
+        finite = field[np.isfinite(field)]
+        if finite.size > 0:
+            frame_vmin = float(np.min(finite))
+            frame_vmax = float(np.percentile(finite, 99.5))
+            if abs(frame_vmax - frame_vmin) < 1e-30:
+                frame_vmax = frame_vmin + 1.0
+        else:
+            frame_vmin, frame_vmax = global_vmin, global_vmax
+    else:
+        frame_vmin, frame_vmax = global_vmin, global_vmax
+
+    rgb_bytes = _rasterise_vti(field, width, height, cmap_name, frame_vmin, frame_vmax, background_rgb)
+    return rgb_bytes, frame_vmin, frame_vmax
+
+
+def build_mp4_vti(
+    vti_paths: Iterable[Path],
+    out_path: Path,
+    *,
+    fps: int = 30,
+    cmap_name: str = "viridis",
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    width: int = 1280,
+    height: int = 720,
+    dpi: int = 120,
+    title: str = "PICM field",
+    n_workers: Optional[int] = None,
+    prefetch: Optional[int] = None,
+    encoder: str = "av1",
+    crf: int = 28,
+    preset: str = "veryslow",
+    background: str = "white",
+    colorbar_width: int = 80,
+) -> None:
+    """Build an MP4 from a sequence of VTI (grid scalar field) files."""
+    paths = list(vti_paths)
+    if not paths:
+        raise ValueError("no VTI frames to encode")
+    width += width % 2
+    height += height % 2
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    background_rgb, background_color, foreground_color = _background_palette(background)
+
+    print("[video] scanning VTI grid frames for field range")
+    scanned_vmin, scanned_vmax = _scan_vti(paths)
+    global_vmin = scanned_vmin if vmin is None else float(vmin)
+    global_vmax = scanned_vmax if vmax is None else float(vmax)
+    if abs(global_vmax - global_vmin) < 1e-30:
+        global_vmax = global_vmin + 1.0
+
+    cb_width = max(60, colorbar_width)
+    cb_width += cb_width % 2
+    frame_width = max(2, width - cb_width)
+    frame_width += frame_width % 2
+    total_width = cb_width + frame_width
+
+    label = "|v| speed"
+    n_workers = max(1, int(n_workers or os.cpu_count() or 1))
+    prefetch = max(1, int(prefetch or n_workers * 2))
+    worker_args = [
+        (str(p), frame_width, height, cmap_name, global_vmin, global_vmax, background_rgb)
+        for p in paths
+    ]
+    process = _open_ffmpeg(out_path, total_width, height, fps, encoder, crf, preset)
+    if process.stdin is None:
+        raise RuntimeError("ffmpeg stdin is not available")
+
+    def _assemble(rgb_bytes, frame_vmin, frame_vmax):
+        cb = _colorbar_left(
+            height, cb_width, frame_vmin, frame_vmax, cmap_name,
+            label, title, background_color, foreground_color, background_rgb, dpi,
+        )
+        field_frame = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, frame_width, 3)
+        return np.concatenate([cb, field_frame], axis=1)
+
+    outer = tqdm(total=len(worker_args), desc="  encoding", unit="frame")
+    if n_workers == 1:
+        try:
+            for args in worker_args:
+                rgb_bytes, fvmin, fvmax = _worker_vti(args)
+                process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
+                outer.update(1)
+        finally:
+            outer.close()
+            process.stdin.close()
+            process.wait()
+        if process.returncode != 0:
+            raise RuntimeError(f"ffmpeg exited with code {process.returncode}")
+        print(f"[video] wrote {out_path}")
+        return
+
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        pending: deque[Tuple[int, Future]] = deque()
+
+        def submit_next(index: int) -> None:
+            if index < len(worker_args):
+                pending.append((index, pool.submit(_worker_vti, worker_args[index])))
+
+        for index in range(min(prefetch, len(worker_args))):
+            submit_next(index)
+        next_submit = prefetch
+
+        for _index in range(len(worker_args)):
+            _, future = pending.popleft()
+            rgb_bytes, fvmin, fvmax = future.result()
+            submit_next(next_submit)
+            next_submit += 1
+            process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
+            outer.set_postfix(queue=len(pending))
+            outer.update(1)
+
+    outer.close()
+    process.stdin.close()
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError(f"ffmpeg exited with code {process.returncode}")
+    print(f"[video] wrote {out_path}")
 
 
 def build_mp4(

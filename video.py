@@ -16,10 +16,10 @@ from picm_postpro.paths import PICM_ROOT, POSTPRO_ROOT, VIDEO_DIR
 from picm_postpro.core import build_binary, run_binary, scheduler_threads, write_csv, read_csv
 
 try:
-    from particles_to_mp4 import parse_pvd, build_mp4
+    from particles_to_mp4 import parse_pvd, build_mp4, build_mp4_vti
 except ImportError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from particles_to_mp4 import parse_pvd, build_mp4
+    from particles_to_mp4 import parse_pvd, build_mp4, build_mp4_vti
 
 
 # ---------------------------------------------------------------------------
@@ -175,14 +175,17 @@ def main() -> int:
         raw_dir.mkdir(parents=True, exist_ok=True)
 
         cfg = copy.deepcopy(base_cfg)
-        cfg["write_particles"] = True
+        _method_val = cfg.get("method", "sl")  # SL is the C++ default when absent
+        is_sl = not _method_val or str(_method_val).lower() == "sl"
+        cfg["write_particles"] = not is_sl
+        cfg["write_norm_velocity"] = is_sl
         cfg["write_u"] = False
         cfg["write_v"] = False
         cfg["write_p"] = False
         cfg["write_div"] = False
         cfg["write_smoke"] = False
-        cfg["write_norm_velocity"] = False
         cfg["write_vorticity"] = False
+        cfg["sampling_rate"] = 1
         cfg["folder"] = str(raw_dir)
         cfg["filename"] = "simulation"
 
@@ -216,41 +219,67 @@ def main() -> int:
 
         print(f"[video] simulation done ({wall:.1f}s), encoding...")
 
-        # Find particles.pvd
-        pvd_path = raw_dir / "particles.pvd"
-        if not pvd_path.exists():
-            # Search subdirs
-            found_pvds = list(raw_dir.rglob("particles.pvd"))
-            if found_pvds:
-                pvd_path = found_pvds[0]
-            else:
-                print(f"[video] no particles.pvd found for {name}")
-                new_manifest_rows = [r for r in new_manifest_rows if r.get("name") != name]
-                new_manifest_rows.append({
-                    "name": name, "config": str(config_path),
-                    "status": "no_pvd", "mp4_path": "",
-                })
-                write_csv(manifest_csv, new_manifest_rows)
-                continue
+        # Resolve PVD: particles for PIC/FLIP/APIC, normVelocity for SL
+        particles_pvd = raw_dir / "particles.pvd"
+        norm_vel_pvd = raw_dir / "normVelocity.pvd"
 
-        vtp_paths = [p for p in parse_pvd(pvd_path) if p.exists()]
-        if not vtp_paths:
-            print(f"[video] no VTP frames for {name}")
+        if not particles_pvd.exists():
+            found = list(raw_dir.rglob("particles.pvd"))
+            if found:
+                particles_pvd = found[0]
+
+        if not norm_vel_pvd.exists():
+            found = list(raw_dir.rglob("normVelocity.pvd"))
+            if found:
+                norm_vel_pvd = found[0]
+
+        use_vti = is_sl and norm_vel_pvd.exists()
+        use_vtp = not is_sl and particles_pvd.exists()
+
+        if not use_vti and not use_vtp:
+            print(f"[video] no output PVD found for {name} "
+                  f"(particles={particles_pvd.exists()}, normVelocity={norm_vel_pvd.exists()})")
+            new_manifest_rows = [r for r in new_manifest_rows if r.get("name") != name]
+            new_manifest_rows.append({
+                "name": name, "config": str(config_path),
+                "status": "no_pvd", "mp4_path": "",
+            })
+            write_csv(manifest_csv, new_manifest_rows)
             continue
 
         try:
-            build_mp4(
-                vtp_paths,
-                mp4_path,
-                fps=args.fps,
-                cmap_name=args.cmap,
-                width=args.width,
-                height=args.height,
-                title=name,
-                n_workers=args.workers,
-                encoder=args.encoder,
-                crf=args.crf,
-            )
+            if use_vti:
+                vti_paths = [p for p in parse_pvd(norm_vel_pvd) if p.exists()]
+                if not vti_paths:
+                    raise RuntimeError("no VTI frames found")
+                build_mp4_vti(
+                    vti_paths,
+                    mp4_path,
+                    fps=args.fps,
+                    cmap_name=args.cmap,
+                    width=args.width,
+                    height=args.height,
+                    title=name,
+                    n_workers=args.workers,
+                    encoder=args.encoder,
+                    crf=args.crf,
+                )
+            else:
+                vtp_paths = [p for p in parse_pvd(particles_pvd) if p.exists()]
+                if not vtp_paths:
+                    raise RuntimeError("no VTP frames found")
+                build_mp4(
+                    vtp_paths,
+                    mp4_path,
+                    fps=args.fps,
+                    cmap_name=args.cmap,
+                    width=args.width,
+                    height=args.height,
+                    title=name,
+                    n_workers=args.workers,
+                    encoder=args.encoder,
+                    crf=args.crf,
+                )
             status = "ok"
         except Exception as exc:
             print(f"[video] encoding failed for {name}: {exc}")
