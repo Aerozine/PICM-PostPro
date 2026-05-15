@@ -42,10 +42,14 @@ from picm_postpro.core import (
 # ---------------------------------------------------------------------------
 
 TESTS = {
+    # ch3 – iterative solver comparison
+    "dambreak":            POSTPRO_ROOT / "test" / "section-3-7-iterative" / "dambreak.json",
+    # ch5 – PPC convergence (shared config also used for ch6 energy diagnostics)
     "falling-block-water": POSTPRO_ROOT / "test" / "section-5-1-7-ppc" / "falling-block-water.json",
     "freeFallInWater":     POSTPRO_ROOT / "test" / "section-5-1-7-ppc" / "falling-block-water.json",
-    "dambreak":            POSTPRO_ROOT / "test" / "section-3-7-iterative" / "dambreak.json",
+    # ch6 – PIC/FLIP/APIC method comparison
     "von-karman":          POSTPRO_ROOT / "test" / "section-6-2-vk" / "von-karman.json",
+    "energy-comparison":   POSTPRO_ROOT / "test" / "section-6-3-energy" / "falling-block-water.json",
     "vases-communicants": (
         PICM_ROOT / "test" / "PIC" / "extra" / "vases-communicants" / "vases-communicants.json"
     ),

@@ -17,7 +17,7 @@
   "write_vorticity": true,
   "write_smoke": true,
   "write_particles": false,
-  "folder": "output/section-6-3-vk-analysis/flip",
+  "folder": "output/section-6-2-vk-analysis/flip",
   "filename": "simulation",
   "velocityu": {
     "rectangle": {

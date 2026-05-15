@@ -17,7 +17,7 @@
   "write_vorticity": true,
   "write_smoke": true,
   "write_particles": false,
-  "folder": "output/section-6-3-vk-analysis/apic",
+  "folder": "output/section-6-2-vk-analysis/apic",
   "filename": "simulation",
   "velocityu": {
     "rectangle": {
