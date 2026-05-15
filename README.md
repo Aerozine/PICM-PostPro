@@ -8,14 +8,6 @@ PICM/
   PostPro/
 ```
 
-It also works while developed beside PICM:
-
-```text
-pi/
-  PICM/
-  PICM-PostPro/
-```
-
 PostPro auto-detects `PICM_ROOT`; override it only when needed:
 
 ```bash
@@ -40,31 +32,8 @@ Run `make build` before `make sbatch`; the `.slurm` files always run with
 
 ## Make Targets
 
-Run these from `PICM/PostPro`:
-
-```bash
-make build
-make sbatch
-make postpro
-make plot
-make postpro-run
-make postpro-extract
-make video
-make clean
-```
 
 From the PICM root, use the same targets through `make -C PostPro`:
-
-```bash
-make -C PostPro build
-make -C PostPro sbatch
-make -C PostPro postpro
-make -C PostPro plot
-make -C PostPro postpro-extract
-make -C PostPro free-fall-particles
-make -C PostPro video
-make -C PostPro clean
-```
 
 - `make build` builds the PICM CPU OpenMP release binary and the debug binary
   used by the solver-iteration study.
@@ -90,83 +59,3 @@ make -C PostPro clean
   to slow high-compression software HEVC/H.264.
 - `make clean` removes PICM build folders, raw simulation fields, image output,
   video output, and Python caches while keeping CSV files under `data/`.
-
-## Server Jobs
-
-Non-scaling Slurm jobs request 32 CPU cores and 16 GB RAM:
-
-- `slurm/study_energy.slurm`
-- `slurm/study_vorticity.slurm`
-- `slurm/study_ppc_impact.slurm`
-- `slurm/study_iterative_solvers.slurm`
-
-The scaling job keeps the dedicated high-memory/exclusive node request so it can
-measure `1,2,4,8,16,32,64` threads:
-
-- `slurm/study_pic_scaling.slurm`
-
-Common overrides:
-
-```bash
-PICM_REPORT_TEST=dambreak make sbatch
-PICM_PPC_VALUES=0,1,2,3,4,5 sbatch slurm/study_ppc_impact.slurm
-PICM_FLIP_COEF_PIC=0,0.01,0.05,0.1 sbatch slurm/study_vorticity.slurm
-PICM_SCALING_THREADS=1,2,4,8,16,32,64 sbatch slurm/study_pic_scaling.slurm
-PICM_SOLVER_TOLERANCES=1e-1,1e-2,1e-3 sbatch slurm/study_iterative_solvers.slurm
-```
-
-Low-CPU local comparison:
-
-```bash
-make -C PostPro postpro-run
-POSTPRO_RUN_METHODS=apic,flip,pic POSTPRO_RUN_FLIP_COEF=0.1,0.05 make -C PostPro postpro-run
-make -C PostPro free-fall-particles
-```
-
-Deferred extraction workflow:
-
-```bash
-# On the cluster, report jobs automatically keep raw output and finish with
-# status=raw_pending when numpy is unavailable.
-make -C PostPro sbatch
-
-# After copying PostPro/data from the cluster to the laptop, extract the saved
-# vorticity study raw output with local numpy.
-make -C PostPro postpro-extract
-```
-
-For other report studies, override the target variables, for example:
-
-```bash
-cd PostPro
-POSTPRO_EXTRACT_ANALYSIS=energy POSTPRO_EXTRACT_OUT=data/study_energy POSTPRO_EXTRACT_MISC=data/misc/study_energy POSTPRO_EXTRACT_IMG=img/study_energy make postpro-extract
-```
-
-## Data and Image Overrides
-
-Defaults:
-
-```bash
-PICM_POSTPRO_DATA=PICM/PostPro/data
-PICM_POSTPRO_MISC=PICM/PostPro/data/misc
-PICM_POSTPRO_IMG=PICM/PostPro/img
-PICM_POSTPRO_VIDEO=PICM/PostPro/video
-```
-
-You normally do not need to set these.
-
-## Plot Inputs
-
-`make plot` uses `kinetic_energy.csv`, `vorticity.csv`, and
-`iterations.csv` for the main report figures:
-
-- `||u||_2(t)` is the velocity L2 norm derived from the saved norm-velocity field.
-- `||omega||_2(t)` is the vorticity L2 norm derived from the saved vorticity field.
-- `Iter(t)` is the pressure-solver iteration count per solve.
-- the PPC study plots PIC `||u||_2(t)` for `ppc=0..25` by default, plus final
-  velocity L2 norm versus ppc.
-
-`max_div.csv` is still kept as diagnostic CSV data, but it is not used as the
-main PPC plot. If the energy or vorticity CSV files are empty, rerun the Slurm
-studies or `make postpro-run` with the current PostPro scripts so the metrics
-are extracted before raw VTK files are deleted.
