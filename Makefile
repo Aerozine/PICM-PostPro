@@ -43,7 +43,7 @@ LAMB_METHODS       ?= pic,flip,apic
 LAMB_FLIP_COEF     ?= 0,0.01,0.05,0.1
 LAMB_PPC           ?= 3
 
-.PHONY: clean clean-lamb clean-vk build sbatch run rankine vk lamb video plot
+.PHONY: clean clean-lamb clean-vk build sbatch run rankine vk lamb video plot archive
 
 clean-lamb:
 	rm -rf "$(DATA_DIR)/lamb"
@@ -177,3 +177,14 @@ plot:
 	$(PYTHON) plot.py \
 	  --data "$(DATA_DIR)" \
 	  --img "$(IMG_DIR)"
+
+archive:
+	@test -d "$(VIDEO_DIR)" || { echo "[error] $(VIDEO_DIR) does not exist — run 'make video' first"; exit 1; }
+	@mp4s=$$(ls "$(VIDEO_DIR)"/*.mp4 2>/dev/null | wc -l); \
+	 test "$$mp4s" -gt 0 || { echo "[error] no .mp4 files found in $(VIDEO_DIR)"; exit 1; }
+	@echo "[archive] creating $(VIDEO_DIR)/videos.zip ..."
+	cd "$(VIDEO_DIR)" && zip -9 videos.zip *.mp4
+	@echo "[archive] creating $(VIDEO_DIR)/videos.tar.xz ..."
+	cd "$(VIDEO_DIR)" && tar -c *.mp4 | xz -9e -T$$(nproc 2>/dev/null || echo 1) --block-size=8MiB > videos.tar.xz
+	@echo "[archive] done:"
+	@ls -lh "$(VIDEO_DIR)/videos.zip" "$(VIDEO_DIR)/videos.tar.xz"

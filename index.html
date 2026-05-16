@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MATH0471-3 - Multiphysics integrated computational project</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <h1>MATH0471-3</h1>
+      <p>Multiphysics integrated computational project</p>
+    </header>
+
+    <section aria-label="Videos">
+      <div id="video-grid" class="video-grid" aria-live="polite">
+        <p class="status">Chargement des videos...</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const grid = document.querySelector("#video-grid");
+
+    const titleFromName = (name) =>
+      decodeURIComponent(name.replace(/\.mp4$/i, ""))
+        .replace(/[-_]+/g, " ");
+
+    fetch("./videos.json")
+      .then((r) => r.json())
+      .then((names) => {
+        const videos = names.slice().sort((a, b) => a.localeCompare(b, "fr"));
+
+        if (!videos.length) {
+          grid.innerHTML = '<p class="status">Aucune video trouvee.</p>';
+          return;
+        }
+
+        grid.innerHTML = videos.map((name) => `
+          <article class="video-item">
+            <h2>${titleFromName(name)}</h2>
+            <video controls preload="metadata">
+              <source src="./${name}" type="video/mp4">
+            </video>
+          </article>
+        `).join("");
+      })
+      .catch(() => {
+        grid.innerHTML = '<p class="status">Impossible de charger l index des videos.</p>';
+      });
+  </script>
+</body>
+</html>

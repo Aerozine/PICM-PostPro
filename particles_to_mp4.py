@@ -185,6 +185,56 @@ def _software_candidates(crf: int, preset: str) -> List[_EncoderCandidate]:
 
 def _hardware_candidates(quality: int) -> List[_EncoderCandidate]:
     candidates = [
+        # AV1 first: best compression + quality. particle_radius≥2 fills each
+        # yuv420p chroma block fully (no single-pixel chroma bleed on white bg).
+        _EncoderCandidate(
+            "hardware AV1",
+            "av1_nvenc",
+            (),
+            (
+                "-vcodec", "av1_nvenc",
+                "-preset", "p7",        # slowest NVENC preset = best quality
+                "-tune", "hq",
+                "-multipass", "fullres",
+                "-spatial-aq", "1",
+                "-temporal-aq", "1",
+                "-cq", str(quality),
+                "-maxrate", "8M",       # streaming-friendly bitrate cap
+                "-bufsize", "16M",
+                "-b:v", "0",
+                "-pix_fmt", "yuv420p",
+            ),
+        ),
+        # H.264 fallback: universal browser/mobile support.
+        _EncoderCandidate(
+            "hardware H.264",
+            "h264_nvenc",
+            (),
+            (
+                "-vcodec", "h264_nvenc",
+                "-preset", "p7",
+                "-tune", "hq",
+                "-multipass", "fullres",
+                "-spatial-aq", "1",
+                "-temporal-aq", "1",
+                "-cq", str(quality),
+                "-maxrate", "8M",
+                "-bufsize", "16M",
+                "-b:v", "0",
+                "-pix_fmt", "yuv420p",
+                "-profile:v", "high",
+                "-level:v", "4.1",
+            ),
+        ),
+        _EncoderCandidate(
+            "hardware AV1",
+            "av1_qsv",
+            (),
+            (
+                "-vcodec", "av1_qsv",
+                "-global_quality", str(quality),
+            ),
+        ),
         _EncoderCandidate(
             "hardware HEVC",
             "hevc_nvenc",
@@ -301,6 +351,46 @@ def _hardware_candidates(quality: int) -> List[_EncoderCandidate]:
     return candidates
 
 
+def _lossless_candidates() -> List[_EncoderCandidate]:
+    """yuv444p candidates (no chroma subsampling → correct particle colours).
+
+    hevc_nvenc with qp=0 and the rext profile is the only NVENC encoder that
+    accepts yuv444p; av1_nvenc rejects it entirely at the driver level.
+    libx264 -crf 0 is mathematically lossless and is the CPU fallback.
+    """
+    return [
+        _EncoderCandidate(
+            "hardware lossless HEVC",
+            "hevc_nvenc",
+            (),
+            (
+                "-vcodec", "hevc_nvenc",
+                "-preset", "p7",
+                "-tune", "hq",
+                "-multipass", "fullres",
+                "-spatial-aq", "1",
+                "-temporal-aq", "1",
+                "-qp", "0",
+                "-b:v", "0",
+                "-pix_fmt", "yuv444p",
+                "-profile:v", "rext",
+                "-tag:v", "hvc1",
+            ),
+        ),
+        _EncoderCandidate(
+            "software lossless H.264",
+            "libx264",
+            (),
+            (
+                "-vcodec", "libx264",
+                "-crf", "0",
+                "-preset", "placebo",
+                "-pix_fmt", "yuv444p",
+            ),
+        ),
+    ]
+
+
 def _normalise_encoder_name(encoder: str) -> str:
     return encoder.strip().lower().replace("_", "-")
 
@@ -311,6 +401,8 @@ def _encoder_candidates(encoder: str, quality: int, preset: str) -> List[_Encode
     software = _software_candidates(quality, preset)
     by_codec = {candidate.codec.replace("_", "-"): candidate for candidate in hardware + software}
 
+    if encoder in {"lossless"}:
+        return _lossless_candidates()
     if encoder == "auto":
         return hardware + software
     if encoder in {"hardware", "hw"}:
@@ -318,16 +410,20 @@ def _encoder_candidates(encoder: str, quality: int, preset: str) -> List[_Encode
     if encoder in {"software", "cpu"}:
         return software
     if encoder in {"av1"}:
-        return [c for c in software if "av1" in c.codec.lower()]
+        hw_av1 = [c for c in hardware if "av1" in c.codec.lower()]
+        sw_av1 = [c for c in software if "av1" in c.codec.lower()]
+        return hw_av1 + sw_av1
     if encoder in {"hevc", "h265", "x265"}:
         return [c for c in software if c.codec == "libx265"]
     if encoder in {"h264", "x264"}:
-        return [c for c in software if c.codec == "libx264"]
+        hw_h264 = [c for c in hardware if "h264" in c.codec.lower()]
+        sw_h264 = [c for c in software if c.codec == "libx264"]
+        return hw_h264 + sw_h264
     if encoder in by_codec:
         return [by_codec[encoder]]
     raise ValueError(
         "unknown encoder "
-        f"'{encoder}', expected auto, av1, hardware, software, libx265, libx264"
+        f"'{encoder}', expected auto, lossless, av1, hardware, software, libx265, libx264"
     )
 
 
@@ -360,6 +456,14 @@ def _ffmpeg_command(
         "pipe:",
         *candidate.output_args,
         *extra_output_args,
+        # BT.709 tags + limited-range signal — required for correct colour in web browsers
+        "-colorspace", "bt709",
+        "-color_primaries", "bt709",
+        "-color_trc", "bt709",
+        "-color_range", "tv",
+        # Keyframe every 1 s → browser can start playing faster and seek smoothly
+        # Minimum 30 so NVENC B-frame GOP constraint (GOP > B-frames + 1) is satisfied
+        "-g", str(max(fps, 30)),
         "-movflags",
         "+faststart",
         str(out_path),
@@ -376,13 +480,13 @@ def _probe_encoder(candidate: _EncoderCandidate) -> bool:
         result = subprocess.run(
             _ffmpeg_command(
                 probe_path,
-                16,
-                16,
+                256,
+                256,
                 1,
                 candidate,
                 extra_output_args=("-frames:v", "1"),
             ),
-            input=bytes(16 * 16 * 3),
+            input=bytes(256 * 256 * 3),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
@@ -397,13 +501,26 @@ def _probe_encoder(candidate: _EncoderCandidate) -> bool:
 
 def _select_encoder(encoder: str, quality: int, preset: str) -> _EncoderCandidate:
     candidates = _encoder_candidates(encoder, quality, preset)
+    hardware_codecs = {c.codec for c in _hardware_candidates(quality)}
     tried = []
+    selected = None
     for candidate in candidates:
         tried.append(candidate.codec)
         if _probe_encoder(candidate):
-            print(f"[video] ffmpeg encoder: {candidate.label} ({candidate.codec})")
-            return candidate
-    raise RuntimeError(f"no working ffmpeg encoder found; tried: {', '.join(tried)}")
+            selected = candidate
+            break
+    if selected is None:
+        raise RuntimeError(f"no working ffmpeg encoder found; tried: {', '.join(tried)}")
+    is_hw = selected.codec in hardware_codecs
+    if not is_hw:
+        hw_tried = [c for c in tried if c in hardware_codecs]
+        if hw_tried:
+            print(
+                f"[video] WARNING: GPU encoder unavailable ({', '.join(hw_tried)} failed) "
+                f"— falling back to CPU encoder: {selected.codec}"
+            )
+    print(f"[video] ffmpeg encoder: {selected.label} ({selected.codec})")
+    return selected
 
 
 def _extract_xml(raw: bytes) -> bytes:
@@ -576,49 +693,64 @@ def _rasterise(
     vmax,
     mode,
     background_rgb,
+    particle_radius: int = 2,
 ):
+    """Rasterise VTP particles into an RGB frame.
+
+    Each particle is drawn as a (2*particle_radius+1)² square block.
+    Overlapping blocks accumulate and are averaged, producing smooth
+    colour gradients between neighbouring particles.  With radius≥1 every
+    yuv420p 2×2 chroma block is fully covered — no chroma bleed halos.
+    """
     image = np.empty((height, width, 3), dtype=np.uint8)
     image[:] = np.asarray(background_rgb, dtype=np.uint8)
     if x is None or len(x) == 0:
         return image.tobytes()
 
-    px = ((x - xlim[0]) / (xlim[1] - xlim[0]) * (width - 1)).astype(np.int32)
-    py = ((y - ylim[0]) / (ylim[1] - ylim[0]) * (height - 1)).astype(np.int32)
-    py = height - 1 - py
-    mask = (px >= 0) & (px < width) & (py >= 0) & (py < height)
-    px = px[mask]
-    py = py[mask]
-    speed = speed[mask]
+    px = np.round((x - xlim[0]) / (xlim[1] - xlim[0]) * (width - 1)).astype(np.int32)
+    py = np.round((ylim[1] - y) / (ylim[1] - ylim[0]) * (height - 1)).astype(np.int32)
+    mask = (px >= 0) & (px < width) & (py >= 0) & (py < height) & np.isfinite(speed)
+    px, py, speed = px[mask], py[mask], speed[mask]
     if len(px) == 0:
         return image.tobytes()
 
-    xbins = np.arange(width + 1)
-    ybins = np.arange(height + 1)
-    counts, _, _ = np.histogram2d(px, py, bins=[xbins, ybins])
-    counts = counts.T
+    count = np.zeros((height, width), dtype=np.float32)
+    values = np.zeros((height, width), dtype=np.float32)
+    r = max(0, int(particle_radius))
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            qx = np.clip(px + dx, 0, width - 1)
+            qy = np.clip(py + dy, 0, height - 1)
+            np.add.at(count, (qy, qx), 1.0)
+            if mode == "speed":
+                np.add.at(values, (qy, qx), speed)
+
+    occupied = count > 0
+    if not np.any(occupied):
+        return image.tobytes()
 
     colormap = _cmap(cmap_name)
     if mode == "density":
-        data = np.log1p(counts)
-        max_value = float(np.nanmax(data)) if data.size else 0.0
-        data = data / (max_value + 1e-30)
+        data = np.zeros((height, width), dtype=np.float32)
+        data[occupied] = np.log1p(count[occupied])
+        mx = float(data.max())
+        if mx > 0:
+            data /= mx
         rgba = colormap(data)
     else:
-        weights, _, _ = np.histogram2d(px, py, bins=[xbins, ybins], weights=speed)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            mean_speed = np.where(counts > 0, weights.T / counts, 0.0)
+        mean_speed = np.zeros((height, width), dtype=np.float32)
+        mean_speed[occupied] = values[occupied] / count[occupied]
         rgba = colormap(mcolors.Normalize(vmin=vmin, vmax=vmax)(mean_speed))
 
-    occupied = counts > 0
     image[occupied] = (rgba[..., :3][occupied] * 255).astype(np.uint8)
     return image.tobytes()
 
 
 def _worker(args):
-    path, width, height, xlim, ylim, cmap_name, global_vmin, global_vmax, mode, background_rgb = args
+    (path, width, height, xlim, ylim, cmap_name,
+     global_vmin, global_vmax, mode, background_rgb, particle_radius) = args
     x, y, speed = _load_vtp(Path(path))
 
-    # Per-frame speed range (dynamic colorbar)
     if speed is not None and len(speed) > 0:
         finite = speed[np.isfinite(speed)]
         if finite.size > 0:
@@ -633,7 +765,7 @@ def _worker(args):
 
     rgb_bytes = _rasterise(
         x, y, speed, width, height, xlim, ylim,
-        cmap_name, frame_vmin, frame_vmax, mode, background_rgb,
+        cmap_name, frame_vmin, frame_vmax, mode, background_rgb, particle_radius,
     )
     return rgb_bytes, frame_vmin, frame_vmax
 
@@ -712,6 +844,29 @@ def _colorbar_left(
             out[:h, :w] = panel[:h, :w]
             panel = out
     return panel
+
+
+def _make_header(width: int, height: int, title: str, step_idx: int) -> np.ndarray:
+    """Render a title + time-step band (height × width, RGB uint8)."""
+    dpi = 120
+    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+    fig.patch.set_facecolor("white")
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_axis_off()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.text(0.5, 0.56, title, transform=ax.transAxes,
+            fontsize=20, color="#111827", fontweight="bold",
+            va="center", ha="center")
+    ax.text(0.975, 0.54, f"Time step {step_idx:04d}", transform=ax.transAxes,
+            fontsize=11, color="#4b5563", va="center", ha="right")
+    fig.canvas.draw()
+    rgba = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+    rgba = rgba.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+    rendered = rgba[..., :3].copy()
+    plt.close(fig)
+    rendered[-1:, :, :] = np.array([[226, 229, 234]], dtype=np.uint8)
+    return rendered.astype(np.uint8)
 
 
 def _open_ffmpeg(
@@ -861,8 +1016,8 @@ def build_mp4_vti(
     n_workers: Optional[int] = None,
     prefetch: Optional[int] = None,
     encoder: str = "av1",
-    crf: int = 28,
-    preset: str = "veryslow",
+    crf: int = 12,
+    preset: str = "placebo",
     background: str = "white",
     colorbar_width: int = 80,
 ) -> None:
@@ -970,10 +1125,11 @@ def build_mp4(
     prefetch: Optional[int] = None,
     margin: float = 0.08,
     encoder: str = "av1",
-    crf: int = 28,
-    preset: str = "veryslow",
+    crf: int = 12,
+    preset: str = "placebo",
     background: str = "white",
     colorbar_width: int = 80,
+    particle_radius: int = 2,
 ) -> None:
     paths = list(vtp_paths)
     if not paths:
@@ -987,18 +1143,20 @@ def build_mp4(
     scanned_xlim, scanned_ylim, scanned_vmin, scanned_vmax = _scan(paths)
     xlim = tuple(xlim) if xlim is not None else scanned_xlim
     ylim = tuple(ylim) if ylim is not None else scanned_ylim
-    # global vmin/vmax used as fallback when a frame has no particles
     global_vmin = scanned_vmin if vmin is None else float(vmin)
     global_vmax = scanned_vmax if vmax is None else float(vmax)
     if abs(global_vmax - global_vmin) < 1e-30:
         global_vmax = global_vmin + 1.0
 
-    # Layout: colorbar on the left, particles on the right
+    # Layout: header band at top; colorbar left, particles right below
+    header_h = 58
+    header_h += header_h % 2
     cb_width = max(60, colorbar_width)
     cb_width += cb_width % 2
     frame_width = max(2, width - cb_width)
     frame_width += frame_width % 2
     total_width = cb_width + frame_width
+    total_height = header_h + height   # height = particle-area height
 
     xlim, ylim = _fit_limits(xlim, ylim, frame_width, height, margin)
     label = "Mean speed |v|" if mode == "speed" else "log(1 + count)"
@@ -1006,39 +1164,31 @@ def build_mp4(
     n_workers = max(1, int(n_workers or os.cpu_count() or 1))
     prefetch = max(1, int(prefetch or n_workers * 2))
     worker_args = [
-        (
-            str(path),
-            frame_width,
-            height,
-            xlim,
-            ylim,
-            cmap_name,
-            global_vmin,
-            global_vmax,
-            mode,
-            background_rgb,
-        )
+        (str(path), frame_width, height, xlim, ylim,
+         cmap_name, global_vmin, global_vmax, mode, background_rgb, particle_radius)
         for path in paths
     ]
-    process = _open_ffmpeg(out_path, total_width, height, fps, encoder, crf, preset)
+    process = _open_ffmpeg(out_path, total_width, total_height, fps, encoder, crf, preset)
     if process.stdin is None:
         raise RuntimeError("ffmpeg stdin is not available")
 
-    def _assemble(rgb_bytes, frame_vmin, frame_vmax):
-        """Combine left colorbar + right particle frame into one row."""
+    def _assemble(rgb_bytes, frame_vmin, frame_vmax, step_idx):
+        """header + colorbar-left + particle-right → total_width × total_height frame."""
+        header = _make_header(total_width, header_h, title, step_idx)
         cb = _colorbar_left(
             height, cb_width, frame_vmin, frame_vmax, cmap_name,
             label, title, background_color, foreground_color, background_rgb, dpi,
         )
         particles = np.frombuffer(rgb_bytes, dtype=np.uint8).reshape(height, frame_width, 3)
-        return np.concatenate([cb, particles], axis=1)
+        body = np.concatenate([cb, particles], axis=1)   # height × total_width
+        return np.concatenate([header, body], axis=0)    # total_height × total_width
 
     outer = tqdm(total=len(worker_args), desc="  encoding", unit="frame")
     if n_workers == 1:
         try:
-            for args in worker_args:
+            for step_idx, args in enumerate(worker_args):
                 rgb_bytes, fvmin, fvmax = _worker(args)
-                process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
+                process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax, step_idx).tobytes())
                 outer.update(1)
         finally:
             outer.close()
@@ -1060,12 +1210,12 @@ def build_mp4(
             submit_next(index)
         next_submit = prefetch
 
-        for _index in range(len(worker_args)):
+        for step_idx in range(len(worker_args)):
             _, future = pending.popleft()
             rgb_bytes, fvmin, fvmax = future.result()
             submit_next(next_submit)
             next_submit += 1
-            process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax).tobytes())
+            process.stdin.write(_assemble(rgb_bytes, fvmin, fvmax, step_idx).tobytes())
             outer.set_postfix(queue=len(pending))
             outer.update(1)
 
